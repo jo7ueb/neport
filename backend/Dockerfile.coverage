@@ -1,0 +1,33 @@
+# カバレッジ計測専用イメージ（`make cov`、backend/scripts/run-coverage.sh から
+# のみ使われる）。通常の Dockerfile（開発/本番ビルド）とは完全に別系統で、
+# 計測が終われば使い捨てる。同じビルダーイメージ(rust:1-trixie)に
+# cargo-llvm-cov + llvm-tools を足しただけのもの。
+FROM rust:1-trixie
+
+WORKDIR /app
+
+RUN rustup component add llvm-tools-preview \
+    && cargo install cargo-llvm-cov --locked
+
+# backup_test.rs はバックエンド自身がサブプロセスとして起動する pg_dump/
+# pg_restore を経由する(backend/src/backup)。ここで実際にサーバーバイナリを
+# 起動して統合テストを走らせる以上、本番の Dockerfile と同じ
+# postgresql-client-16 が要る。
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    gnupg \
+    && wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg \
+    && echo "deb http://apt.postgresql.org/pub/repos/apt trixie-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y postgresql-client-16 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Cargo.toml ./
+COPY src ./src
+COPY migrations ./migrations
+COPY tests ./tests
+COPY scripts/run-coverage.sh ./run-coverage.sh
+RUN chmod +x ./run-coverage.sh
+
+ENTRYPOINT ["./run-coverage.sh"]

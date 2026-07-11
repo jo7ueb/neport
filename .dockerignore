@@ -1,0 +1,9 @@
+# frontend's build context is now the repo root (see docker-compose.yml),
+# so this keeps `docker compose build frontend` from tarring up backend's
+# multi-GB target/ directory, git history, etc. every time.
+.git/
+backend/target/
+frontend/node_modules/
+frontend/dist/
+docs/
+*.md

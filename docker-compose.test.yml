@@ -1,0 +1,61 @@
+# 統合テスト（backend/tests/）専用のオーバーレイ。
+#
+# - test-db: 開発/本番用の `db` とは完全に別のコンテナ・別ボリューム
+#   （pgdata_test）。統合テストは大量のテストユーザー・プロジェクトを
+#   作成しっぱなしにする設計（backend/tests/common/mod.rs の unique() で
+#   衝突回避しているだけで、後片付けは行わない）ため、`db` を直接使うと
+#   開発中に手動で見ているデータ（ユーザー選択のドロップダウンなど）に
+#   大量のテストデータが混入してしまう。これを防ぐため、backend/migrator
+#   の接続先を test-db に向け替える。
+# - LOGIN_RATE_LIMIT_*: テストは nginx を経由せず backend コンテナへ直接
+#   /auth/login を 100回以上呼ぶため、全呼び出しが同一送信元 IP に見え、
+#   本番向けの既定レート制限（12秒/バースト5, backend/src/config.rs）
+#   だと弾かれる。
+# - ports: 統合テストは backend/tests/common/mod.rs のデフォルト
+#   （TEST_BASE_URL 未設定時は http://localhost:3000）に従い、host から
+#   直接 backend を叩く。本番では nginx 経由のみでよく、backend を
+#   host に公開する必要はないため docker-compose.yml 本体には置かない。
+#
+# 使い方:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml build migrator
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm migrator
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+#   (この状態で backend/tests を実行 - test-db に対して走る)
+#
+# docker-compose.yml 単体（`docker compose up`）では適用されないため、
+# 素の起動は常に本番相当の安全な設定・本来の db のままになる。
+services:
+  test-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-neport}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set (see .env.example)}
+      POSTGRES_DB: ${POSTGRES_DB:-neport}
+    volumes:
+      - pgdata_test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neport"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrator:
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-neport}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set (see .env.example)}@test-db:5432/${POSTGRES_DB:-neport}
+    depends_on:
+      test-db:
+        condition: service_healthy
+
+  backend:
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-neport}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set (see .env.example)}@test-db:5432/${POSTGRES_DB:-neport}
+      LOGIN_RATE_LIMIT_PER_SECOND: "50"
+      LOGIN_RATE_LIMIT_BURST: "1000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      test-db:
+        condition: service_healthy
+
+volumes:
+  pgdata_test:

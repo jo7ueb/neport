@@ -1,0 +1,108 @@
+name: Deploy to Cloud Run
+
+# "Test & coverage" (test.yml) が master ブランチで成功した時だけ発火する。
+# テストは全ブランチで参考として走らせる一方、デプロイは
+# masterかつテストgreenの場合のみ行いたいため、あえてワークフローを分けて
+# workflow_run で連結している（同一ワークフロー内の `needs` は他ブランチの
+# テストとデプロイ判定を分離できないため使えない）。
+on:
+  workflow_run:
+    workflows: ["Test & coverage"]
+    types: [completed]
+    branches: [master]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    # GCP_WORKLOAD_IDENTITY_PROVIDER/GCP_SERVICE_ACCOUNT/PROD_DATABASE_URL are
+    # registered as Environment secrets under the "neport" environment (see
+    # repo Settings > Secrets and variables > Actions) rather than plain
+    # repository secrets - a job only sees environment-scoped secrets if it
+    # declares that same environment here.
+    environment: neport
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation に必須
+    env:
+      REGION: ${{ vars.GCP_REGION || 'asia-northeast1' }}
+      REPO: ${{ vars.GCP_ARTIFACT_REPO || 'neport' }}
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      # workflow_run イベントでの `github.sha`/`GITHUB_SHA` はデフォルト
+      # ブランチの最新コミットになりがちで、実際にテストされたコミットとは
+      # 限らない。テスト済みのコミットを確実にデプロイするため、テスト
+      # ワークフローが対象にした head_sha を明示的に使う。
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      # `gcloud auth configure-docker` delegates to the docker-credential-gcloud
+      # helper, which mishandles WIF-impersonated credentials ("Unable to
+      # acquire impersonated credentials" / "Gaia id not found for email" -
+      # service accounts never have a Gaia id, that's expected, but the
+      # helper's refresh path doesn't account for it). Logging in directly
+      # with the access token the auth step already minted sidesteps that
+      # helper entirely.
+      - name: Configure Docker for Artifact Registry
+        run: |
+          echo "${{ steps.auth.outputs.access_token }}" | \
+            docker login -u oauth2accesstoken --password-stdin "https://${REGION}-docker.pkg.dev"
+
+      - name: Build and push images
+        run: |
+          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}"
+          docker build -t "${IMAGE_BASE}/backend:${IMAGE_TAG}" -t "${IMAGE_BASE}/backend:latest" ./backend
+          docker build --build-arg GIT_COMMIT="${IMAGE_TAG:0:7}" -t "${IMAGE_BASE}/frontend:${IMAGE_TAG}" -t "${IMAGE_BASE}/frontend:latest" -f frontend/Dockerfile .
+          docker build -t "${IMAGE_BASE}/migrator:${IMAGE_TAG}" -t "${IMAGE_BASE}/migrator:latest" -f backend/Dockerfile.migrate ./backend
+          docker push "${IMAGE_BASE}/backend:${IMAGE_TAG}"
+          docker push "${IMAGE_BASE}/backend:latest"
+          docker push "${IMAGE_BASE}/frontend:${IMAGE_TAG}"
+          docker push "${IMAGE_BASE}/frontend:latest"
+          docker push "${IMAGE_BASE}/migrator:${IMAGE_TAG}"
+          docker push "${IMAGE_BASE}/migrator:latest"
+
+      # スキーマ変更を Cloud Run 側に何かデプロイして行う必要はない
+      # (docs/CLOUD_RUN_DEPLOY.md 参照) - migrator イメージを本番DBの
+      # DATABASE_URL 向けにこの場で直接 docker run するだけで十分。
+      - name: Run database migrations
+        run: |
+          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}"
+          docker run --rm -e DATABASE_URL="${{ secrets.PROD_DATABASE_URL }}" "${IMAGE_BASE}/migrator:${IMAGE_TAG}"
+
+      - name: Deploy backend to Cloud Run
+        run: |
+          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}"
+          gcloud run deploy neport-backend \
+            --image "${IMAGE_BASE}/backend:${IMAGE_TAG}" \
+            --region "${REGION}" \
+            --allow-unauthenticated \
+            --set-env-vars "APP_ENV=production,SESSION_COOKIE_NAME=neport_session,SESSION_TTL_SECONDS=86400,GCS_BUCKET=${{ vars.GCS_BUCKET }}" \
+            --set-secrets "DATABASE_URL=neport-database-url:latest,ADMIN_EMAIL=neport-admin-email:latest,ADMIN_PASSWORD=neport-admin-password:latest,ADMIN_DISPLAY_NAME=neport-admin-display-name:latest"
+
+      - name: Look up backend URL
+        id: backend_url
+        run: |
+          URL=$(gcloud run services describe neport-backend --region "${REGION}" --format 'value(status.url)')
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy frontend to Cloud Run
+        run: |
+          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}"
+          gcloud run deploy neport-frontend \
+            --image "${IMAGE_BASE}/frontend:${IMAGE_TAG}" \
+            --region "${REGION}" \
+            --allow-unauthenticated \
+            --set-env-vars "BACKEND_UPSTREAM=${{ steps.backend_url.outputs.url }},NGINX_RESOLVER=8.8.8.8"

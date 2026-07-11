@@ -1,0 +1,40 @@
+# Rust
+/backend/target/
+Cargo.lock
+**/*.rs.bk
+/backend/coverage/
+
+# Node / Frontend
+/frontend/node_modules/
+/frontend/dist/
+npm-debug.log
+yarn-error.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Database
+pgdata/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+tmp/
+temp/
+*.tmp

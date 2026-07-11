@@ -1,0 +1,47 @@
+# `make cov` 専用のオーバーレイ。docker-compose.test.yml (test-db) の上に
+# 重ねて使う想定 ( -f docker-compose.yml -f docker-compose.test.yml
+# -f docker-compose.coverage.yml )。
+#
+# `coverage` サービスは使い捨てのジョブコンテナで、1回のコンテナ実行の中で
+# 以下を全部行う（backend/scripts/run-coverage.sh 参照）:
+#   1. cargo-llvm-cov の計装つきでサーバーバイナリをビルドし、自分自身の
+#      中でバックグラウンド起動（test-db に接続）
+#   2. cargo test（ユニットテスト + backend/tests/*.rs の統合テストの両方。
+#      統合テストは TEST_BASE_URL=http://localhost:3000 で 1. のサーバーに
+#      HTTP でアクセスする - 同一コンテナ内なので localhost で届く）
+#   3. サーバーを SIGTERM で正常終了させ(graceful shutdown。main.rs 参照)、
+#      プロファイルデータを確定させてからレポートを生成
+#
+# `docker compose up`（通常の開発）には一切登場しないよう、既存の
+# backend/frontend サービスとは無関係な独立サービスとして定義している。
+services:
+  coverage:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.coverage
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-neport}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set (see .env.example)}@test-db:5432/${POSTGRES_DB:-neport}
+      RUST_LOG: ${RUST_LOG:-info}
+      BIND_ADDR: 0.0.0.0:3000
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-neport_session}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-86400}
+      # 統合テストが要求する admin 資格情報と、サーバー起動時にブートストラップ
+      # する admin 資格情報を必ず一致させる（.env の値に関係なく自己完結する
+      # ように、ADMIN_* と TEST_ADMIN_* を同じ式から引く）。
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_me_now_12345}
+      ADMIN_DISPLAY_NAME: ${ADMIN_DISPLAY_NAME:-Admin}
+      TEST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      TEST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_me_now_12345}
+      UPLOAD_DIR: /app/uploads
+      # docker-compose.test.yml の backend サービスと同じ理由: 統合テストが
+      # 同一コンテナ内から /auth/login を100回以上叩くため。
+      LOGIN_RATE_LIMIT_PER_SECOND: "50"
+      LOGIN_RATE_LIMIT_BURST: "1000"
+    depends_on:
+      test-db:
+        condition: service_healthy
+    volumes:
+      - ./backend/coverage:/app/coverage-report
+    profiles:
+      - coverage

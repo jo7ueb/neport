@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-neport}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set (see .env.example)}
+      POSTGRES_DB: ${POSTGRES_DB:-neport}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neport"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrator:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.migrate
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-neport}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set (see .env.example)}@db:5432/${POSTGRES_DB:-neport}
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - migrate
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-neport}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set (see .env.example)}@db:5432/${POSTGRES_DB:-neport}
+      RUST_LOG: ${RUST_LOG:-info}
+      APP_ENV: ${APP_ENV:-development}
+      BIND_ADDR: ${BIND_ADDR:-0.0.0.0:3000}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-neport_session}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-86400}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_DISPLAY_NAME: ${ADMIN_DISPLAY_NAME:-}
+      UPLOAD_DIR: /app/uploads
+      # LOGIN_RATE_LIMIT_PER_SECOND / LOGIN_RATE_LIMIT_BURST are intentionally
+      # not set here: `docker compose up` with this file alone must be safe
+      # to run as-is (someone self-hosting Neport shouldn't get a weakened
+      # login rate limit by default). The production-safe default (12s
+      # refill / burst 5) lives in backend/src/config.rs and applies
+      # whenever these are unset. The integration test suite needs a much
+      # higher limit since it calls /auth/login 100+ times from what looks
+      # like one source IP (it bypasses nginx and hits this container
+      # directly) — that override lives in docker-compose.test.yml.
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      # Root context (not ./frontend) so the Dockerfile can also COPY the
+      # top-level nginx.conf - it's now a template baked into the image
+      # (see frontend/docker-entrypoint.sh) rather than bind-mounted, so the
+      # same image works unmodified on Cloud Run too.
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "8880:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  uploads_data:

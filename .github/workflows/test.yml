@@ -1,0 +1,51 @@
+name: Test & coverage
+
+# 参考情報としてのCI。まだ存在しない develop 等の開発系ブランチも含め、
+# 全ブランチへの push で実行する（master に限らない）。実際のデプロイ判定は
+# deploy.yml が workflow_run 経由でこのワークフローの結果（master ブランチ
+# 限定）を見て行う - このワークフロー自身はデプロイを一切トリガーしない。
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # ここで使う POSTGRES_PASSWORD/ADMIN_* は使い捨ての CI 専用 test-db にしか
+    # 使わない値なので、実際のシークレットではなく直書きでよい
+    # (docker-compose.yml/.test.yml/.coverage.yml が要求する変数を満たすだけ)。
+    env:
+      POSTGRES_USER: neport
+      POSTGRES_PASSWORD: ci_test_password
+      POSTGRES_DB: neport
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: change_me_now_12345
+      ADMIN_DISPLAY_NAME: CI Admin
+    steps:
+      - uses: actions/checkout@v4
+
+      # backend/scripts/run-coverage.sh の中で cargo test（ユニット+統合の両方）
+      # を実行してから cargo-llvm-cov でレポートを生成する。Makefile の `cov`
+      # ターゲットと同じ手順（ローカルの `make cov` と全く同じ経路）。
+      - name: Run backend tests with coverage measurement
+        run: make cov
+
+      # coverage コンテナ (backend/Dockerfile.coverage) は root で動くため、
+      # バインドマウントした backend/coverage/ 配下 (html/ の中身、lcov.info)
+      # はホスト側でもroot所有になる。actions/upload-artifact はActions
+      # runnerの非rootユーザーで動くため、chownしておかないと
+      # "EACCES: permission denied, scandir ..." で失敗する。
+      - name: Fix coverage report ownership
+        if: always()
+        run: |
+          sudo mkdir -p backend/coverage
+          sudo chown -R "$(id -u):$(id -g)" backend/coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          if-no-files-found: ignore

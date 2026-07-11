@@ -1,0 +1,13 @@
+FROM rust:latest
+
+WORKDIR /app
+
+# rustls を足さないと "SQLx was built without TLS support enabled" で
+# TLS必須の接続先（Neon等の本番マネージドPostgres）に繋げない。ローカルの
+# db/test-db はTLS不要なので今まで気づかれていなかった（backend本体の
+# sqlx依存はruntime-tokio-rustlsを使っているので、それに合わせている）。
+RUN cargo install sqlx-cli --no-default-features --features postgres,rustls
+
+COPY migrations ./migrations
+
+CMD ["sqlx", "migrate", "run"]
