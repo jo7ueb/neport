@@ -23,15 +23,18 @@ type AuditLogRow = (
 // target_type instead. Workflow status/transition deletions carry their
 // label in from_text directly (no lookup table lends itself to a JOIN there
 // since the row is already gone by the time it's recorded), and
-// system_settings has no target_id at all.
+// system_settings/backup have no target_id at all. Milestones use a soft
+// delete (deleted_at), so unlike statuses/transitions the row (and its name)
+// still exists after "deletion" and can be resolved via JOIN.
 const SELECT_SQL: &str = "SELECT a.id, a.actor_id, actor.display_name, a.action, a.target_type, a.target_id,
-        COALESCE(tu.display_name, tp.name, tt.title, tw.name), a.from_text, a.to_text, a.ip_address, a.occurred_at
+        COALESCE(tu.display_name, tp.name, tt.title, tw.name, tm.name), a.from_text, a.to_text, a.ip_address, a.occurred_at
      FROM audit_log a
      JOIN users actor ON actor.id = a.actor_id
      LEFT JOIN users tu ON tu.id = a.target_id AND a.target_type IN ('user', 'user_approver', 'project_member')
      LEFT JOIN projects tp ON tp.id = a.target_id AND a.target_type = 'project'
      LEFT JOIN tickets tt ON tt.id = a.target_id AND a.target_type = 'ticket'
-     LEFT JOIN workflows tw ON tw.id = a.target_id AND a.target_type = 'workflow'";
+     LEFT JOIN workflows tw ON tw.id = a.target_id AND a.target_type = 'workflow'
+     LEFT JOIN milestones tm ON tm.id = a.target_id AND a.target_type = 'milestone'";
 
 fn row_to_entry(row: AuditLogRow) -> AuditLogEntry {
     let (id, actor_id, actor_name, action, target_type, target_id, target_name, from_text, to_text, ip_address, occurred_at) = row;

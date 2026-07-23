@@ -140,6 +140,21 @@ export type AuditAction =
   | 'login_failed'
   | 'logout'
   | 'password_changed'
+  | 'backup_created'
+  | 'backup_restored'
+  | 'user_created'
+  | 'milestone_created'
+  | 'milestone_updated'
+  | 'milestone_deleted'
+  | 'project_created'
+  | 'project_updated'
+  | 'project_member_added'
+  | 'project_member_role_changed'
+  | 'workflow_created'
+  | 'workflow_updated'
+  | 'workflow_status_created'
+  | 'workflow_status_updated'
+  | 'workflow_transition_created'
 
 export interface AuditLogEntry {
   id: number

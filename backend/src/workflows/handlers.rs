@@ -28,9 +28,11 @@ pub struct CreateWorkflowRequest {
 pub async fn create_workflow(
     State(state): State<Arc<AppState>>,
     AdminUser(admin): AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Json(payload): Json<CreateWorkflowRequest>,
 ) -> Result<(StatusCode, Json<Workflow>)> {
     let workflow = repo::create_workflow(&state.db, &payload.name, Some(admin.id)).await?;
+    crate::audit::repo::record(&state.db, admin.id, "workflow_created", "workflow", Some(workflow.id), None, None, ip.as_deref()).await?;
     Ok((StatusCode::CREATED, Json(workflow)))
 }
 
@@ -50,11 +52,24 @@ pub struct UpdateWorkflowRequest {
 
 pub async fn update_workflow(
     State(state): State<Arc<AppState>>,
-    AdminUser(_admin): AdminUser,
+    AdminUser(admin): AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(id): Path<i64>,
     Json(payload): Json<UpdateWorkflowRequest>,
 ) -> Result<Json<Workflow>> {
+    let previous = repo::get_workflow(&state.db, id).await?.ok_or(AppError::NotFound)?;
     let workflow = repo::update_workflow(&state.db, id, &payload.name).await?.ok_or(AppError::NotFound)?;
+    crate::audit::repo::record(
+        &state.db,
+        admin.id,
+        "workflow_updated",
+        "workflow",
+        Some(id),
+        Some(&previous.name),
+        Some(&workflow.name),
+        ip.as_deref(),
+    )
+    .await?;
     Ok(Json(workflow))
 }
 
@@ -86,6 +101,7 @@ pub struct CreateStatusRequest {
 pub async fn create_status(
     State(state): State<Arc<AppState>>,
     AdminUser(admin): AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(workflow_id): Path<i64>,
     Json(payload): Json<CreateStatusRequest>,
 ) -> Result<(StatusCode, Json<WorkflowStatus>)> {
@@ -100,6 +116,7 @@ pub async fn create_status(
         Some(admin.id),
     )
     .await?;
+    crate::audit::repo::record(&state.db, admin.id, "workflow_status_created", "workflow_status", Some(status.id), None, Some(&status.label), ip.as_deref()).await?;
     Ok((StatusCode::CREATED, Json(status)))
 }
 
@@ -114,10 +131,16 @@ pub struct UpdateStatusRequest {
 
 pub async fn update_status(
     State(state): State<Arc<AppState>>,
-    AdminUser(_admin): AdminUser,
-    Path((_workflow_id, status_id)): Path<(i64, i64)>,
+    AdminUser(admin): AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
+    Path((workflow_id, status_id)): Path<(i64, i64)>,
     Json(payload): Json<UpdateStatusRequest>,
 ) -> Result<Json<WorkflowStatus>> {
+    let previous_label = repo::list_statuses(&state.db, workflow_id)
+        .await?
+        .into_iter()
+        .find(|s| s.id == status_id)
+        .map(|s| s.label);
     let status = repo::update_status(
         &state.db,
         status_id,
@@ -129,6 +152,17 @@ pub async fn update_status(
     )
     .await?
     .ok_or(AppError::NotFound)?;
+    crate::audit::repo::record(
+        &state.db,
+        admin.id,
+        "workflow_status_updated",
+        "workflow_status",
+        Some(status_id),
+        previous_label.as_deref(),
+        Some(&status.label),
+        ip.as_deref(),
+    )
+    .await?;
     Ok(Json(status))
 }
 
@@ -157,10 +191,22 @@ pub struct CreateTransitionRequest {
 pub async fn create_transition(
     State(state): State<Arc<AppState>>,
     AdminUser(admin): AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(workflow_id): Path<i64>,
     Json(payload): Json<CreateTransitionRequest>,
 ) -> Result<(StatusCode, Json<WorkflowTransition>)> {
     let transition = repo::create_transition(&state.db, workflow_id, payload.from_status_id, payload.to_status_id, Some(admin.id)).await?;
+    crate::audit::repo::record(
+        &state.db,
+        admin.id,
+        "workflow_transition_created",
+        "workflow_transition",
+        Some(transition.id),
+        None,
+        Some(&format!("{} -> {}", payload.from_status_id, payload.to_status_id)),
+        ip.as_deref(),
+    )
+    .await?;
     Ok((StatusCode::CREATED, Json(transition)))
 }
 

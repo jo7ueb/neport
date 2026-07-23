@@ -36,11 +36,23 @@ pub struct AddMemberRequest {
 pub async fn add_member(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(project_id): Path<i64>,
     Json(payload): Json<AddMemberRequest>,
 ) -> Result<(StatusCode, Json<ProjectMember>)> {
     access::check_project_access(&state.db, &user, project_id, Access::Manage).await?;
     let member = repo::add_member(&state.db, project_id, payload.user_id, payload.role, Some(user.id)).await?;
+    crate::audit::repo::record(
+        &state.db,
+        user.id,
+        "project_member_added",
+        "project_member",
+        Some(payload.user_id),
+        None,
+        Some(&format!("project_id={}, role={}", project_id, payload.role)),
+        ip.as_deref(),
+    )
+    .await?;
     Ok((StatusCode::CREATED, Json(member)))
 }
 
@@ -52,6 +64,7 @@ pub struct UpdateMemberRequest {
 pub async fn update_member(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path((project_id, member_user_id)): Path<(i64, i64)>,
     Json(payload): Json<UpdateMemberRequest>,
 ) -> Result<StatusCode> {
@@ -61,7 +74,19 @@ pub async fn update_member(
         guard_not_last_manager(&state, project_id, member_user_id).await?;
     }
 
+    let previous_role = repo::get_role(&state.db, project_id, member_user_id).await?;
     repo::update_member_role(&state.db, project_id, member_user_id, payload.role).await?;
+    crate::audit::repo::record(
+        &state.db,
+        user.id,
+        "project_member_role_changed",
+        "project_member",
+        Some(member_user_id),
+        previous_role.map(|r| r.to_string()).as_deref(),
+        Some(&format!("project_id={}, role={}", project_id, payload.role)),
+        ip.as_deref(),
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

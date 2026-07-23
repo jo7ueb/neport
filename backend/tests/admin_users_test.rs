@@ -72,6 +72,29 @@ async fn admin_can_create_users_with_a_chosen_role() {
     assert_eq!(resp.status(), 201);
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["role"], "admin");
+    let new_user_id = body["id"].as_i64().unwrap();
+
+    let admin_id = admin
+        .get(format!("{}/api/v1/auth/me", base_url()))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap()["user"]["id"]
+        .as_i64()
+        .unwrap();
+    let resp = admin
+        .get(format!("{}/api/v1/audit-log?user_id={}", base_url(), admin_id))
+        .send()
+        .await
+        .unwrap();
+    let audit_body: Value = resp.json().await.unwrap();
+    let entries = audit_body["items"].as_array().unwrap();
+    assert!(
+        entries.iter().any(|e| e["action"] == "user_created" && e["target_id"] == new_user_id),
+        "creating a user must leave an audit_log entry"
+    );
 }
 
 #[tokio::test]

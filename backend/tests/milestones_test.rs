@@ -1,5 +1,5 @@
 mod common;
-use common::{as_i64, base_url, unique, TestUser};
+use common::{admin_client, as_i64, base_url, unique, TestUser};
 use serde_json::json;
 
 #[tokio::test]
@@ -54,6 +54,24 @@ async fn create_list_update_delete_milestone_and_link_it_to_a_ticket() {
     let updated: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(updated["name"], "v1.0-final");
 
+    let admin = admin_client().await;
+    let resp = admin
+        .get(format!("{}/api/v1/audit-log?user_id={}", base_url(), user.id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let entries = body["items"].as_array().unwrap();
+    assert!(
+        entries.iter().any(|e| e["action"] == "milestone_created" && e["target_id"] == milestone_id),
+        "creating a milestone must leave an audit_log entry"
+    );
+    assert!(
+        entries.iter().any(|e| e["action"] == "milestone_updated" && e["target_id"] == milestone_id),
+        "updating a milestone must leave an audit_log entry"
+    );
+
     let ticket = user.create_ticket(project_id, None, "Ticket for milestone").await;
     let ticket_id = as_i64(&ticket, "id");
 
@@ -80,6 +98,18 @@ async fn create_list_update_delete_milestone_and_link_it_to_a_ticket() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 204);
+
+    let resp = admin
+        .get(format!("{}/api/v1/audit-log?user_id={}", base_url(), user.id))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let entries = body["items"].as_array().unwrap();
+    assert!(
+        entries.iter().any(|e| e["action"] == "milestone_deleted" && e["target_id"] == milestone_id),
+        "deleting a milestone must leave an audit_log entry"
+    );
 
     // Milestone deletion is a soft delete (see milestones::repo::delete_milestone)
     // specifically so a ticket that referenced it keeps that historical link

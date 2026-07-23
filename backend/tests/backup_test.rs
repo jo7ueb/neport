@@ -29,12 +29,34 @@ async fn backup_and_restore_round_trips_through_the_real_api() {
         .unwrap();
     assert_eq!(resp.status(), 403);
 
+    let admin_id = admin
+        .get(format!("{}/api/v1/auth/me", base_url()))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap()["user"]["id"]
+        .as_i64()
+        .unwrap();
+
     // Take a real backup as admin.
     let resp = admin.post(format!("{}/api/v1/backup", base_url())).send().await.unwrap();
     assert_eq!(resp.status(), 200);
     assert_eq!(resp.headers().get("content-type").unwrap(), "application/gzip");
     let bundle = resp.bytes().await.unwrap().to_vec();
     assert!(!bundle.is_empty(), "backup bundle should not be empty");
+
+    let resp = admin
+        .get(format!("{}/api/v1/audit-log?user_id={}", base_url(), admin_id))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = resp.json().await.unwrap();
+    assert!(
+        body["items"].as_array().unwrap().iter().any(|e| e["action"] == "backup_created"),
+        "taking a backup must leave an audit_log entry"
+    );
 
     // Restoring without maintenance mode enabled must be rejected.
     let resp = admin
@@ -73,6 +95,26 @@ async fn backup_and_restore_round_trips_through_the_real_api() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 204, "restore should succeed once maintenance mode is enabled");
+
+    // The restore replaces audit_log's own contents with the dump taken
+    // earlier (before backup_created/system_settings_updated existed), so
+    // those must be gone now - but backup_restored, inserted right after
+    // pg_restore finishes, must still show up.
+    let resp = admin
+        .get(format!("{}/api/v1/audit-log?user_id={}", base_url(), admin_id))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = resp.json().await.unwrap();
+    let entries = body["items"].as_array().unwrap();
+    assert!(
+        entries.iter().any(|e| e["action"] == "backup_restored"),
+        "restoring a backup must leave an audit_log entry that survives the restore itself"
+    );
+    assert!(
+        !entries.iter().any(|e| e["action"] == "backup_created"),
+        "audit_log entries written after the dump was taken must not survive the restore"
+    );
 
     // Turn maintenance mode back off.
     let resp = admin

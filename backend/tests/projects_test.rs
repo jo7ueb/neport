@@ -398,6 +398,68 @@ async fn admin_default_project_list_only_shows_projects_they_are_involved_in() {
 }
 
 #[tokio::test]
+async fn creating_and_updating_a_project_is_recorded_in_the_audit_log() {
+    let user = TestUser::create().await;
+    let admin = admin_client().await;
+    let admin_id = admin
+        .get(format!("{}/api/v1/auth/me", base_url()))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()["user"]["id"]
+        .as_i64()
+        .unwrap();
+
+    let resp = admin
+        .post(format!("{}/api/v1/projects", base_url()))
+        .json(&json!({
+            "name": unique("audited-project"),
+            "description": null,
+            "members": [{ "user_id": user.id, "role": "manager" }],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let project_id = as_i64(&resp.json().await.unwrap(), "id");
+
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/projects/{}", base_url(), project_id))
+        .json(&json!({ "description": "audited update" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let resp = admin
+        .get(format!("{}/api/v1/audit-log?user_id={}", base_url(), admin_id))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let entries = body["items"].as_array().unwrap();
+    assert!(
+        entries.iter().any(|e| e["action"] == "project_created" && e["target_id"] == project_id),
+        "creating a project must leave an audit_log entry"
+    );
+
+    let resp = admin
+        .get(format!("{}/api/v1/audit-log?user_id={}", base_url(), user.id))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let entries = body["items"].as_array().unwrap();
+    assert!(
+        entries.iter().any(|e| e["action"] == "project_updated" && e["target_id"] == project_id),
+        "updating a project must leave an audit_log entry"
+    );
+}
+
+#[tokio::test]
 async fn get_nonexistent_project_returns_404() {
     let user = TestUser::create().await;
 

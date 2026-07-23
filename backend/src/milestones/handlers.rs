@@ -35,6 +35,7 @@ pub async fn list_milestones(
 pub async fn create_milestone(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(project_id): Path<i64>,
     Json(payload): Json<CreateMilestoneRequest>,
 ) -> Result<(StatusCode, Json<Milestone>)> {
@@ -49,6 +50,7 @@ pub async fn create_milestone(
         Some(user.id),
     )
     .await?;
+    crate::audit::repo::record(&state.db, user.id, "milestone_created", "milestone", Some(milestone.id), None, None, ip.as_deref()).await?;
     Ok((StatusCode::CREATED, Json(milestone)))
 }
 
@@ -67,6 +69,7 @@ pub async fn get_milestone(
 pub async fn update_milestone(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path((project_id, id)): Path<(i64, i64)>,
     Json(payload): Json<UpdateMilestoneRequest>,
 ) -> Result<Json<Milestone>> {
@@ -81,6 +84,7 @@ pub async fn update_milestone(
     )
     .await?
     .ok_or(AppError::NotFound)?;
+    crate::audit::repo::record(&state.db, user.id, "milestone_updated", "milestone", Some(id), None, None, ip.as_deref()).await?;
     Ok(Json(milestone))
 }
 
@@ -97,9 +101,11 @@ pub async fn get_burndown(
 pub async fn delete_milestone(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path((project_id, id)): Path<(i64, i64)>,
 ) -> Result<StatusCode> {
     access::check_project_access(&state.db, &user, project_id, Access::Write).await?;
     repo::delete_milestone(&state.db, id, Some(user.id)).await?;
+    crate::audit::repo::record(&state.db, user.id, "milestone_deleted", "milestone", Some(id), None, None, ip.as_deref()).await?;
     Ok(StatusCode::NO_CONTENT)
 }

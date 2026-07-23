@@ -447,6 +447,7 @@ struct CreateUserRequest {
 async fn create_user(
     State(state): State<Arc<AppState>>,
     auth::extractors::AdminUser(admin): auth::extractors::AdminUser,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<auth::User>)> {
     auth::password::validate_strength(&payload.password)?;
@@ -463,6 +464,8 @@ async fn create_user(
         Some(admin.id),
     )
     .await?;
+
+    audit::repo::record(&state.db, admin.id, "user_created", "user", Some(user.id), None, Some(&user.email), ip.as_deref()).await?;
 
     Ok((StatusCode::CREATED, Json(user)))
 }

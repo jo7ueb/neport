@@ -1,5 +1,5 @@
 mod common;
-use common::{as_i64, base_url, unique, TestUser};
+use common::{admin_client, as_i64, base_url, unique, TestUser};
 use serde_json::json;
 
 #[tokio::test]
@@ -139,6 +139,50 @@ async fn removing_the_last_manager_is_rejected() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 400, "demoting the only manager must also be rejected");
+}
+
+#[tokio::test]
+async fn adding_a_member_and_changing_their_role_is_recorded_in_the_audit_log() {
+    let owner = TestUser::create().await;
+    let member = TestUser::create().await;
+    let project = owner.create_project(&unique("audited-members-project")).await;
+    let project_id = as_i64(&project, "id");
+
+    let resp = owner
+        .client
+        .post(format!("{}/api/v1/projects/{}/members", base_url(), project_id))
+        .json(&json!({ "user_id": member.id, "role": "viewer" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    let resp = owner
+        .client
+        .patch(format!("{}/api/v1/projects/{}/members/{}", base_url(), project_id, member.id))
+        .json(&json!({ "role": "member" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let admin = admin_client().await;
+    let resp = admin
+        .get(format!("{}/api/v1/audit-log?user_id={}", base_url(), owner.id))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let entries = body["items"].as_array().unwrap();
+    assert!(
+        entries.iter().any(|e| e["action"] == "project_member_added" && e["target_id"] == member.id),
+        "adding a project member must leave an audit_log entry"
+    );
+    let role_change = entries
+        .iter()
+        .find(|e| e["action"] == "project_member_role_changed" && e["target_id"] == member.id)
+        .expect("changing a project member's role must leave an audit_log entry");
+    assert_eq!(role_change["from_text"], "viewer");
 }
 
 #[tokio::test]

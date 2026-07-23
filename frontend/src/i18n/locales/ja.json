@@ -292,7 +292,22 @@
       "login": "ログイン",
       "loginFailed": "ログイン失敗",
       "logout": "ログアウト",
-      "passwordChanged": "パスワードを変更"
+      "passwordChanged": "パスワードを変更",
+      "backupCreated": "バックアップを作成",
+      "backupRestored": "バックアップからリストア",
+      "userCreated": "ユーザーを作成",
+      "milestoneCreated": "マイルストーンを作成",
+      "milestoneUpdated": "マイルストーンを編集",
+      "milestoneDeleted": "マイルストーンを削除",
+      "projectCreated": "プロジェクトを作成",
+      "projectUpdated": "プロジェクトを編集",
+      "projectMemberAdded": "プロジェクトメンバーを追加",
+      "projectMemberRoleChanged": "プロジェクトメンバーのロールを変更",
+      "workflowCreated": "ワークフローを作成",
+      "workflowUpdated": "ワークフローを編集",
+      "workflowStatusCreated": "ワークフローのステータスを作成",
+      "workflowStatusUpdated": "ワークフローのステータスを編集",
+      "workflowTransitionCreated": "ワークフローの状態遷移を作成"
     }
   },
   "adminBackup": {

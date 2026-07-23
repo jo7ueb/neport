@@ -163,6 +163,106 @@ async fn workflow_mutations_require_admin() {
 }
 
 #[tokio::test]
+async fn workflow_status_and_transition_mutations_are_recorded_in_the_audit_log() {
+    let admin = TestUser::create_admin().await;
+
+    let resp = admin
+        .client
+        .post(format!("{}/api/v1/workflows", base_url()))
+        .json(&json!({ "name": unique("audited-workflow") }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let workflow: serde_json::Value = resp.json().await.unwrap();
+    let workflow_id = as_i64(&workflow, "id");
+
+    let resp = admin
+        .client
+        .patch(format!("{}/api/v1/workflows/{}", base_url(), workflow_id))
+        .json(&json!({ "name": unique("audited-workflow-renamed") }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let resp = admin
+        .client
+        .post(format!("{}/api/v1/workflows/{}/statuses", base_url(), workflow_id))
+        .json(&json!({ "key": "todo", "label": "To Do", "category": "todo", "position": 0, "is_initial": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let status_a: serde_json::Value = resp.json().await.unwrap();
+    let status_a_id = as_i64(&status_a, "id");
+
+    let resp = admin
+        .client
+        .post(format!("{}/api/v1/workflows/{}/statuses", base_url(), workflow_id))
+        .json(&json!({ "key": "done", "label": "Done", "category": "done", "position": 1 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let status_b: serde_json::Value = resp.json().await.unwrap();
+    let status_b_id = as_i64(&status_b, "id");
+
+    let resp = admin
+        .client
+        .patch(format!("{}/api/v1/workflows/{}/statuses/{}", base_url(), workflow_id, status_a_id))
+        .json(&json!({ "label": "To Do (renamed)" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let resp = admin
+        .client
+        .post(format!("{}/api/v1/workflows/{}/transitions", base_url(), workflow_id))
+        .json(&json!({ "from_status_id": status_a_id, "to_status_id": status_b_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let transition: serde_json::Value = resp.json().await.unwrap();
+    let transition_id = as_i64(&transition, "id");
+
+    let resp = admin
+        .client
+        .get(format!("{}/api/v1/audit-log?user_id={}", base_url(), admin.id))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let entries = body["items"].as_array().unwrap();
+    assert!(
+        entries.iter().any(|e| e["action"] == "workflow_created" && e["target_id"] == workflow_id),
+        "creating a workflow must leave an audit_log entry"
+    );
+    assert!(
+        entries.iter().any(|e| e["action"] == "workflow_updated" && e["target_id"] == workflow_id),
+        "renaming a workflow must leave an audit_log entry"
+    );
+    assert!(
+        entries.iter().any(|e| e["action"] == "workflow_status_created" && e["target_id"] == status_a_id),
+        "creating a workflow status must leave an audit_log entry"
+    );
+    let status_update = entries
+        .iter()
+        .find(|e| e["action"] == "workflow_status_updated" && e["target_id"] == status_a_id)
+        .expect("updating a workflow status must leave an audit_log entry");
+    assert_eq!(status_update["from_text"], "To Do");
+    assert_eq!(status_update["to_text"], "To Do (renamed)");
+    assert!(
+        entries
+            .iter()
+            .any(|e| e["action"] == "workflow_transition_created" && e["target_id"] == transition_id),
+        "creating a workflow transition must leave an audit_log entry"
+    );
+}
+
+#[tokio::test]
 async fn the_default_workflow_cannot_be_deleted_and_an_in_use_workflow_is_protected() {
     let admin = TestUser::create_admin().await;
 

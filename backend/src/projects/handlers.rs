@@ -62,6 +62,7 @@ pub async fn list_projects(
 pub async fn create_project(
     State(state): State<Arc<AppState>>,
     crate::auth::extractors::AdminUser(user): crate::auth::extractors::AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Json(payload): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<Project>)> {
     let members = payload.members.unwrap_or_default();
@@ -78,6 +79,7 @@ pub async fn create_project(
         &initial_members,
     )
     .await?;
+    crate::audit::repo::record(&state.db, user.id, "project_created", "project", Some(project.id), None, None, ip.as_deref()).await?;
     Ok((StatusCode::CREATED, Json(project)))
 }
 
@@ -111,6 +113,7 @@ pub async fn get_project(
 pub async fn update_project(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(id): Path<i64>,
     Json(payload): Json<UpdateProjectRequest>,
 ) -> Result<Json<Project>> {
@@ -118,6 +121,7 @@ pub async fn update_project(
     let project = repo::update_project(&state.db, id, payload.name.as_deref(), payload.description.as_deref())
         .await?
         .ok_or(crate::error::AppError::NotFound)?;
+    crate::audit::repo::record(&state.db, user.id, "project_updated", "project", Some(id), None, None, ip.as_deref()).await?;
     Ok(Json(project))
 }
 

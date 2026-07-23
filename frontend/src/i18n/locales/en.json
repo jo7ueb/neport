@@ -292,7 +292,22 @@
       "login": "Logged in",
       "loginFailed": "Login failed",
       "logout": "Logged out",
-      "passwordChanged": "Changed password"
+      "passwordChanged": "Changed password",
+      "backupCreated": "Created backup",
+      "backupRestored": "Restored from backup",
+      "userCreated": "Created user",
+      "milestoneCreated": "Created milestone",
+      "milestoneUpdated": "Updated milestone",
+      "milestoneDeleted": "Deleted milestone",
+      "projectCreated": "Created project",
+      "projectUpdated": "Updated project",
+      "projectMemberAdded": "Added project member",
+      "projectMemberRoleChanged": "Changed project member's role",
+      "workflowCreated": "Created workflow",
+      "workflowUpdated": "Updated workflow",
+      "workflowStatusCreated": "Created workflow status",
+      "workflowStatusUpdated": "Updated workflow status",
+      "workflowTransitionCreated": "Created workflow transition"
     }
   },
   "adminBackup": {

@@ -28,6 +28,21 @@ const ACTION_KEYS = {
   login_failed: 'adminAuditLog.action.loginFailed',
   logout: 'adminAuditLog.action.logout',
   password_changed: 'adminAuditLog.action.passwordChanged',
+  backup_created: 'adminAuditLog.action.backupCreated',
+  backup_restored: 'adminAuditLog.action.backupRestored',
+  user_created: 'adminAuditLog.action.userCreated',
+  milestone_created: 'adminAuditLog.action.milestoneCreated',
+  milestone_updated: 'adminAuditLog.action.milestoneUpdated',
+  milestone_deleted: 'adminAuditLog.action.milestoneDeleted',
+  project_created: 'adminAuditLog.action.projectCreated',
+  project_updated: 'adminAuditLog.action.projectUpdated',
+  project_member_added: 'adminAuditLog.action.projectMemberAdded',
+  project_member_role_changed: 'adminAuditLog.action.projectMemberRoleChanged',
+  workflow_created: 'adminAuditLog.action.workflowCreated',
+  workflow_updated: 'adminAuditLog.action.workflowUpdated',
+  workflow_status_created: 'adminAuditLog.action.workflowStatusCreated',
+  workflow_status_updated: 'adminAuditLog.action.workflowStatusUpdated',
+  workflow_transition_created: 'adminAuditLog.action.workflowTransitionCreated',
 } as const satisfies Record<AuditAction, string>
 
 export function AdminAuditLogPage() {

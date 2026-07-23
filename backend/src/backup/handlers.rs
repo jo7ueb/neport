@@ -10,7 +10,8 @@ use super::service;
 
 pub async fn create_backup(
     State(state): State<Arc<AppState>>,
-    MaintenanceModeAdmin(_admin): MaintenanceModeAdmin,
+    MaintenanceModeAdmin(admin): MaintenanceModeAdmin,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
 ) -> Result<impl IntoResponse> {
     let temp_dir = service::TempDir::new().await?;
     let dump_path = temp_dir.path().join("db.dump");
@@ -35,6 +36,7 @@ pub async fn create_backup(
     };
 
     let filename = format!("neport-backup-{}.tar.gz", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+    crate::audit::repo::record(&state.db, admin.id, "backup_created", "backup", None, None, Some(&filename), ip.as_deref()).await?;
     Ok((
         [
             (header::CONTENT_TYPE, "application/gzip".to_string()),
@@ -46,7 +48,8 @@ pub async fn create_backup(
 
 pub async fn restore_backup(
     State(state): State<Arc<AppState>>,
-    MaintenanceModeAdmin(_admin): MaintenanceModeAdmin,
+    MaintenanceModeAdmin(admin): MaintenanceModeAdmin,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     mut multipart: Multipart,
 ) -> Result<StatusCode> {
     // The upload body must always be fully read before this handler can
@@ -100,5 +103,9 @@ pub async fn restore_backup(
 
     service::run_pg_restore(&state.database_url, &dump_path).await?;
 
+    // Recorded after, not before: pg_restore --clean replaces audit_log's
+    // own contents with whatever the backup had, so a record written
+    // beforehand would just be wiped out by the restore it's describing.
+    crate::audit::repo::record(&state.db, admin.id, "backup_restored", "backup", None, None, None, ip.as_deref()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
