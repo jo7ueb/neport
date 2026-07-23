@@ -19,6 +19,11 @@ pub struct Ticket {
     pub milestone_id: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // The whole subtree (children, grandchildren, ...), not just direct
+    // children - lets the UI show a parent ticket's progress (e.g. "3/5")
+    // without a separate request.
+    pub child_ticket_count: i64,
+    pub child_done_ticket_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

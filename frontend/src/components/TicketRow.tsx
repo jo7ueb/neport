@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { listTicketChildren } from '../api/tickets'
 import { statusLabel } from '../i18n/statusLabel'
+import { TicketProgress } from './TicketProgress'
 import type { Ticket, WorkflowStatus } from '../types/models'
 
 function isOverdue(dueDate: string | null, status: WorkflowStatus): boolean {
@@ -40,6 +41,7 @@ export function TicketRow({ ticket, depth = 0 }: { ticket: Ticket; depth?: numbe
         <Link to={`/tickets/${ticket.id}`} className="flex-1 text-blue-600 hover:underline">
           #{ticket.id} {ticket.title}
         </Link>
+        <TicketProgress done={ticket.child_done_ticket_count} total={ticket.child_ticket_count} />
         <span className="text-gray-500">{statusLabel(t, ticket.status)}</span>
         {ticket.due_date && (
           <span className={isOverdue(ticket.due_date, ticket.status) ? 'font-semibold text-red-700' : 'text-gray-400'}>

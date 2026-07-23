@@ -31,6 +31,7 @@ const apiErrorKeyByMessage: Record<string, string> = {
   'invalid locale': 'apiErrors.invalidLocale',
   'invalid timezone': 'apiErrors.invalidTimezone',
   "this status transition is not allowed by the project's workflow": 'apiErrors.invalidStatusTransition',
+  'all child tickets must be done before this ticket can be closed': 'apiErrors.childTicketsNotDone',
   'this workflow is assigned to one or more projects': 'apiErrors.workflowInUse',
   'this status is used by one or more tickets': 'apiErrors.statusInUse',
   'the default workflow cannot be deleted': 'apiErrors.defaultWorkflowUndeletable',

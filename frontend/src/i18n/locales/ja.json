@@ -113,11 +113,15 @@
       "columnId": "No.",
       "columnTitle": "タイトル",
       "columnStatus": "ステータス",
+      "columnProgress": "進捗",
       "columnAssignee": "担当者",
       "columnMilestone": "マイルストーン",
       "columnDueDate": "締切日",
       "empty": "チケットがありません",
       "createFailed": "チケットの作成に失敗しました"
+    },
+    "progress": {
+      "fraction": "{{done}}/{{total}}件完了（{{percent}}%）"
     },
     "detail": {
       "backToList": "← チケット一覧に戻る",
@@ -129,6 +133,7 @@
       "descriptionLabel": "概要",
       "noDescription": "概要は設定されていません",
       "statusLabel": "ステータス",
+      "childProgressLabel": "子チケットの進捗",
       "assigneeLabel": "担当者",
       "dueDateLabel": "締切日",
       "parentTicket": "親チケット",
@@ -233,6 +238,7 @@
       "hierarchy": "階層",
       "title": "タイトル",
       "status": "ステータス",
+      "progress": "進捗",
       "assignee": "担当者",
       "startDate": "開始日",
       "endDate": "終了日",
@@ -642,6 +648,7 @@
     "invalidLocale": "無効な言語設定です",
     "invalidTimezone": "無効なタイムゾーンです",
     "invalidStatusTransition": "このワークフローではこの状態遷移は許可されていません",
+    "childTicketsNotDone": "すべての子チケットが完了するまで、このチケットは完了状態にできません",
     "workflowInUse": "このワークフローは1つ以上のプロジェクトで使用されています",
     "statusInUse": "このステータスは1つ以上のチケットで使用されています",
     "defaultWorkflowUndeletable": "標準ワークフローは削除できません",

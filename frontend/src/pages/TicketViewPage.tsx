@@ -10,6 +10,7 @@ import { DependencyList } from '../components/DependencyList'
 import { MarkdownContent } from '../components/MarkdownContent'
 import { TicketCreateModal } from '../components/TicketCreateModal'
 import { TicketPicker } from '../components/TicketPicker'
+import { TicketProgress } from '../components/TicketProgress'
 import { TicketRow } from '../components/TicketRow'
 import { TicketTimeline } from '../components/TicketTimeline'
 import { getErrorMessage } from '../i18n/apiErrors'
@@ -157,6 +158,14 @@ export function TicketViewPage() {
                 <dt className="text-gray-500">{t('ticket.detail.statusLabel')}</dt>
                 <dd className="text-gray-800">{statusLabel(t, ticket.status)}</dd>
               </div>
+              {ticket.child_ticket_count > 0 && (
+                <div>
+                  <dt className="text-gray-500">{t('ticket.detail.childProgressLabel')}</dt>
+                  <dd className="text-gray-800">
+                    <TicketProgress done={ticket.child_done_ticket_count} total={ticket.child_ticket_count} />
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt className="text-gray-500">{t('ticket.detail.assigneeLabel')}</dt>
                 <dd className="text-gray-800">{assigneeName(ticket.assignee_id)}</dd>

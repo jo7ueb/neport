@@ -38,6 +38,8 @@ struct DependentTicketRow {
     status_category: String,
     status_position: i32,
     status_is_initial: bool,
+    child_ticket_count: i64,
+    child_done_ticket_count: i64,
 }
 
 fn row_to_dependent_ticket(row: DependentTicketRow) -> DependentTicket {
@@ -62,6 +64,8 @@ fn row_to_dependent_ticket(row: DependentTicketRow) -> DependentTicket {
         status_category: row.status_category,
         status_position: row.status_position,
         status_is_initial: row.status_is_initial,
+        child_ticket_count: row.child_ticket_count,
+        child_done_ticket_count: row.child_done_ticket_count,
     };
     DependentTicket {
         dependency_id: row.dependency_id,

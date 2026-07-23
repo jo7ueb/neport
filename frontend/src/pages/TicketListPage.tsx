@@ -9,6 +9,7 @@ import { listAllUsers } from '../api/users'
 import { ProjectNav } from '../components/ProjectNav'
 import { Pagination } from '../components/Pagination'
 import { TicketCreateModal } from '../components/TicketCreateModal'
+import { TicketProgress } from '../components/TicketProgress'
 import { statusLabel } from '../i18n/statusLabel'
 import type { WorkflowStatus } from '../types/models'
 
@@ -167,6 +168,7 @@ export function TicketListPage() {
                 <th className="px-3 py-2">{t('ticket.list.columnId')}</th>
                 <th className="px-3 py-2">{t('ticket.list.columnTitle')}</th>
                 <th className="px-3 py-2">{t('ticket.list.columnStatus')}</th>
+                <th className="px-3 py-2">{t('ticket.list.columnProgress')}</th>
                 <th className="px-3 py-2">{t('ticket.list.columnAssignee')}</th>
                 <th className="px-3 py-2">{t('ticket.list.columnMilestone')}</th>
                 <th className="px-3 py-2">{t('ticket.list.columnDueDate')}</th>
@@ -185,6 +187,9 @@ export function TicketListPage() {
                     </Link>
                   </td>
                   <td className="px-3 py-2">{statusLabel(t, ticket.status)}</td>
+                  <td className="px-3 py-2">
+                    <TicketProgress done={ticket.child_done_ticket_count} total={ticket.child_ticket_count} />
+                  </td>
                   <td className="px-3 py-2">{assigneeName(ticket.assignee_id)}</td>
                   <td className="px-3 py-2">{milestoneName(ticket.milestone_id)}</td>
                   <td className={`px-3 py-2 ${isOverdue(ticket.due_date, ticket.status) ? 'font-semibold text-red-700' : ''}`}>
@@ -194,7 +199,7 @@ export function TicketListPage() {
               ))}
               {tickets?.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-gray-400">
+                  <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
                     {t('ticket.list.empty')}
                   </td>
                 </tr>

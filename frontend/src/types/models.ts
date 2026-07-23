@@ -99,6 +99,8 @@ export interface Ticket {
   milestone_id: number | null
   created_at: string
   updated_at: string
+  child_ticket_count: number
+  child_done_ticket_count: number
 }
 
 export type NotificationType =

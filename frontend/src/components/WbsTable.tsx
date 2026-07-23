@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { createTicket, updateTicket, type UpdateTicketInput } from '../api/tickets'
 import { statusLabel } from '../i18n/statusLabel'
+import { TicketProgress } from './TicketProgress'
 import type { Ticket, TicketNode, User, WorkflowDetail, WorkflowStatus } from '../types/models'
 
 interface FlatRow {
@@ -172,6 +173,7 @@ export function WbsTable({
             <th className="px-2 py-2">{t('wbs.columns.hierarchy')}</th>
             <th className="px-2 py-2">{t('wbs.columns.title')}</th>
             <th className="px-2 py-2">{t('wbs.columns.status')}</th>
+            <th className="px-2 py-2">{t('wbs.columns.progress')}</th>
             <th className="px-2 py-2">{t('wbs.columns.assignee')}</th>
             <th className="px-2 py-2">{t('wbs.columns.startDate')}</th>
             <th className="px-2 py-2">{t('wbs.columns.endDate')}</th>
@@ -187,7 +189,7 @@ export function WbsTable({
 
             return (
               <Fragment key={ticket.id}>
-                <tr>
+                <tr className="hover:bg-gray-50">
                   <td className="px-2 py-1 whitespace-nowrap">
                     <button
                       onClick={() => outdent(row)}
@@ -254,6 +256,9 @@ export function WbsTable({
                     )}
                   </td>
                   <td className="px-2 py-1">
+                    <TicketProgress done={ticket.child_done_ticket_count} total={ticket.child_ticket_count} />
+                  </td>
+                  <td className="px-2 py-1">
                     {isEditing('assignee_id') ? (
                       <select
                         autoFocus
@@ -309,7 +314,7 @@ export function WbsTable({
                 {addingChildFor === ticket.id && (
                   <tr key={`${ticket.id}-new`}>
                     <td />
-                    <td colSpan={7} style={{ paddingLeft: 8 + (depth + 1) * 20 }} className="px-2 py-1">
+                    <td colSpan={8} style={{ paddingLeft: 8 + (depth + 1) * 20 }} className="px-2 py-1">
                       <form onSubmit={(e) => submitNewTask(e, ticket.id)} className="flex items-center gap-2">
                         <input
                           autoFocus
@@ -340,7 +345,7 @@ export function WbsTable({
           })}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={8} className="px-2 py-4 text-center text-gray-400">
+              <td colSpan={9} className="px-2 py-4 text-center text-gray-400">
                 {t('wbs.empty')}
               </td>
             </tr>

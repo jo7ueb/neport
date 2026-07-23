@@ -113,11 +113,15 @@
       "columnId": "No.",
       "columnTitle": "Title",
       "columnStatus": "Status",
+      "columnProgress": "Progress",
       "columnAssignee": "Assignee",
       "columnMilestone": "Milestone",
       "columnDueDate": "Due Date",
       "empty": "No tickets",
       "createFailed": "Failed to create ticket"
+    },
+    "progress": {
+      "fraction": "{{done}}/{{total}} done ({{percent}}%)"
     },
     "detail": {
       "backToList": "← Back to ticket list",
@@ -129,6 +133,7 @@
       "descriptionLabel": "Description",
       "noDescription": "No description set",
       "statusLabel": "Status",
+      "childProgressLabel": "Child Ticket Progress",
       "assigneeLabel": "Assignee",
       "dueDateLabel": "Due Date",
       "parentTicket": "Parent Ticket",
@@ -233,6 +238,7 @@
       "hierarchy": "Level",
       "title": "Title",
       "status": "Status",
+      "progress": "Progress",
       "assignee": "Assignee",
       "startDate": "Start Date",
       "endDate": "End Date",
@@ -642,6 +648,7 @@
     "invalidLocale": "Invalid locale",
     "invalidTimezone": "Invalid timezone",
     "invalidStatusTransition": "This status transition is not allowed by the project's workflow",
+    "childTicketsNotDone": "This ticket cannot be marked done until all of its child tickets are done",
     "workflowInUse": "This workflow is assigned to one or more projects",
     "statusInUse": "This status is used by one or more tickets",
     "defaultWorkflowUndeletable": "The default workflow cannot be deleted",

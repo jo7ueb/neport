@@ -107,6 +107,205 @@ async fn create_get_update_and_delete_ticket() {
 }
 
 #[tokio::test]
+async fn ticket_progress_counts_the_entire_subtree_not_just_direct_children() {
+    let user = TestUser::create().await;
+    let project = user.create_project(&unique("child-progress-project")).await;
+    let project_id = as_i64(&project, "id");
+
+    let parent = user.create_ticket(project_id, None, "Parent").await;
+    let parent_id = as_i64(&parent, "id");
+    assert_eq!(parent["child_ticket_count"], 0, "a childless ticket starts with no children");
+    assert_eq!(parent["child_done_ticket_count"], 0);
+
+    let child_a = user.create_ticket(project_id, Some(parent_id), "Child A").await;
+    let child_a_id = as_i64(&child_a, "id");
+    let child_b = user.create_ticket(project_id, Some(parent_id), "Child B").await;
+    let child_b_id = as_i64(&child_b, "id");
+
+    let resp = user
+        .client
+        .get(format!("{}/api/v1/tickets/{}", base_url(), parent_id))
+        .send()
+        .await
+        .unwrap();
+    let parent: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(parent["child_ticket_count"], 2, "two direct children now exist");
+    assert_eq!(parent["child_done_ticket_count"], 0, "neither child is done yet");
+
+    // The workflow is a ladder, so open -> done must pass through in_progress.
+    let in_progress_status_id = user.status_id(project_id, "in_progress").await;
+    let done_status_id = user.status_id(project_id, "done").await;
+    user.client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), child_a_id))
+        .json(&json!({ "status_id": in_progress_status_id }))
+        .send()
+        .await
+        .unwrap();
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), child_a_id))
+        .json(&json!({ "status_id": done_status_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let resp = user
+        .client
+        .get(format!("{}/api/v1/tickets/{}", base_url(), parent_id))
+        .send()
+        .await
+        .unwrap();
+    let parent: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(parent["child_ticket_count"], 2);
+    assert_eq!(parent["child_done_ticket_count"], 1, "only child A is done");
+
+    // A grandchild (child of child A) must count toward the *parent's*
+    // subtree too, not just child A's - this is the whole point of counting
+    // recursively instead of only direct children.
+    let grandchild = user.create_ticket(project_id, Some(child_a_id), "Grandchild").await;
+    let grandchild_id = as_i64(&grandchild, "id");
+
+    let resp = user
+        .client
+        .get(format!("{}/api/v1/tickets/{}", base_url(), parent_id))
+        .send()
+        .await
+        .unwrap();
+    let parent: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(parent["child_ticket_count"], 3, "the grandchild must count toward the root parent's subtree");
+    assert_eq!(parent["child_done_ticket_count"], 1, "the new grandchild is open, not done");
+
+    let resp = user
+        .client
+        .get(format!("{}/api/v1/tickets/{}", base_url(), child_a_id))
+        .send()
+        .await
+        .unwrap();
+    let child_a_fetched: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(child_a_fetched["child_ticket_count"], 1, "child A's own subtree is just the grandchild");
+    assert_eq!(child_a_fetched["child_done_ticket_count"], 0);
+
+    let resp = user
+        .client
+        .get(format!("{}/api/v1/tickets/{}", base_url(), grandchild_id))
+        .send()
+        .await
+        .unwrap();
+    let grandchild_fetched: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(grandchild_fetched["child_ticket_count"], 0, "a leaf ticket has no subtree of its own");
+
+    // Deleting the still-open child must drop the total, not the done count.
+    let resp = user
+        .client
+        .delete(format!("{}/api/v1/tickets/{}", base_url(), child_b_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let resp = user
+        .client
+        .get(format!("{}/api/v1/tickets/{}", base_url(), parent_id))
+        .send()
+        .await
+        .unwrap();
+    let parent: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(
+        parent["child_ticket_count"], 2,
+        "the deleted child must no longer be counted, but the surviving grandchild still is"
+    );
+    assert_eq!(parent["child_done_ticket_count"], 1);
+}
+
+#[tokio::test]
+async fn a_ticket_cannot_be_closed_while_any_ticket_in_its_subtree_is_still_incomplete() {
+    let user = TestUser::create().await;
+    let project = user.create_project(&unique("close-guard-project")).await;
+    let project_id = as_i64(&project, "id");
+
+    let parent = user.create_ticket(project_id, None, "Parent").await;
+    let parent_id = as_i64(&parent, "id");
+    let child = user.create_ticket(project_id, Some(parent_id), "Child").await;
+    let child_id = as_i64(&child, "id");
+    let grandchild = user.create_ticket(project_id, Some(child_id), "Grandchild").await;
+    let grandchild_id = as_i64(&grandchild, "id");
+
+    let in_progress_status_id = user.status_id(project_id, "in_progress").await;
+    let done_status_id = user.status_id(project_id, "done").await;
+
+    // Moving the parent to in_progress is unaffected - only closing (moving
+    // into a "done"-category status) is guarded.
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), parent_id))
+        .json(&json!({ "status_id": in_progress_status_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // The grandchild (not just the direct child) is still open, so closing
+    // the parent must be rejected.
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), parent_id))
+        .json(&json!({ "status_id": done_status_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "the parent must not be closeable while the grandchild is still open");
+
+    // Finish the grandchild first...
+    user.client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), grandchild_id))
+        .json(&json!({ "status_id": in_progress_status_id }))
+        .send()
+        .await
+        .unwrap();
+    user.client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), grandchild_id))
+        .json(&json!({ "status_id": done_status_id }))
+        .send()
+        .await
+        .unwrap();
+
+    // ...the direct child is still open, so the parent is still blocked.
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), parent_id))
+        .json(&json!({ "status_id": done_status_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "the direct child is still open, so the parent must still be blocked");
+
+    // Finish the direct child too...
+    user.client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), child_id))
+        .json(&json!({ "status_id": in_progress_status_id }))
+        .send()
+        .await
+        .unwrap();
+    user.client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), child_id))
+        .json(&json!({ "status_id": done_status_id }))
+        .send()
+        .await
+        .unwrap();
+
+    // ...now every ticket in the subtree is done, so the parent can close.
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), parent_id))
+        .json(&json!({ "status_id": done_status_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "every descendant is now done, so closing the parent must succeed");
+}
+
+#[tokio::test]
 async fn deleting_a_parent_ticket_cascades_to_children_and_dependencies() {
     let user = TestUser::create().await;
     let project = user.create_project(&unique("ticket-cascade-project")).await;

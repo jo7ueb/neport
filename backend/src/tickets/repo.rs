@@ -32,9 +32,30 @@ pub(crate) struct TicketRow {
     pub status_category: String,
     pub status_position: i32,
     pub status_is_initial: bool,
+    pub child_ticket_count: i64,
+    pub child_done_ticket_count: i64,
 }
 
-pub(crate) const TICKET_SELECT_COLUMNS: &str = "t.id, t.project_id, t.parent_ticket_id, t.reporter_id, t.assignee_id, t.title, t.description, t.start_date, t.end_date, t.due_date, t.milestone_id, t.created_at, t.updated_at, ws.id AS status_id, ws.workflow_id AS status_workflow_id, ws.key AS status_key, ws.label AS status_label, ws.category AS status_category, ws.position AS status_position, ws.is_initial AS status_is_initial";
+// child_ticket_count/child_done_ticket_count count the *entire* subtree
+// (children, grandchildren, ...), not just direct children - each is its own
+// self-contained recursive CTE correlated to the outer `t.id`, walking
+// tickets.parent_ticket_id down as far as it goes. `path` guards against a
+// cycle the same way get_ticket_tree's own recursion does (parent changes
+// are supposed to already reject creating one - see
+// reparenting_a_ticket_into_its_own_descendant_is_rejected_as_a_cycle - but
+// this is cheap insurance against a future bug or a row edited directly in
+// the DB).
+pub(crate) const TICKET_SELECT_COLUMNS: &str = "t.id, t.project_id, t.parent_ticket_id, t.reporter_id, t.assignee_id, t.title, t.description, t.start_date, t.end_date, t.due_date, t.milestone_id, t.created_at, t.updated_at, ws.id AS status_id, ws.workflow_id AS status_workflow_id, ws.key AS status_key, ws.label AS status_label, ws.category AS status_category, ws.position AS status_position, ws.is_initial AS status_is_initial, \
+    (WITH RECURSIVE descendants AS ( \
+        SELECT id, ARRAY[t.id, id] AS path FROM tickets WHERE parent_ticket_id = t.id AND deleted_at IS NULL \
+        UNION ALL \
+        SELECT c.id, d.path || c.id FROM tickets c JOIN descendants d ON c.parent_ticket_id = d.id WHERE c.deleted_at IS NULL AND NOT (c.id = ANY(d.path)) \
+     ) SELECT COUNT(*) FROM descendants) AS child_ticket_count, \
+    (WITH RECURSIVE descendants AS ( \
+        SELECT id, ARRAY[t.id, id] AS path FROM tickets WHERE parent_ticket_id = t.id AND deleted_at IS NULL \
+        UNION ALL \
+        SELECT c.id, d.path || c.id FROM tickets c JOIN descendants d ON c.parent_ticket_id = d.id WHERE c.deleted_at IS NULL AND NOT (c.id = ANY(d.path)) \
+     ) SELECT COUNT(*) FROM descendants dd JOIN tickets dt ON dt.id = dd.id JOIN workflow_statuses dws ON dt.status_id = dws.id WHERE dws.category = 'done') AS child_done_ticket_count";
 // The "AND t.deleted_at IS NULL" lives in the JOIN condition (not a WHERE
 // clause) so this composes with every caller below, which all append their
 // own "WHERE ..." after this constant.
@@ -42,7 +63,7 @@ pub(crate) const TICKET_FROM_JOIN: &str = "FROM tickets t JOIN workflow_statuses
 // Same columns as TICKET_SELECT_COLUMNS but unprefixed - for selecting from
 // a CTE (e.g. the recursive ticket_tree query) whose own output columns
 // already have these exact names, rather than from `tickets t`/`workflow_statuses ws` directly.
-pub(crate) const TICKET_SELECT_COLUMNS_BARE: &str = "id, project_id, parent_ticket_id, reporter_id, assignee_id, title, description, start_date, end_date, due_date, milestone_id, created_at, updated_at, status_id, status_workflow_id, status_key, status_label, status_category, status_position, status_is_initial";
+pub(crate) const TICKET_SELECT_COLUMNS_BARE: &str = "id, project_id, parent_ticket_id, reporter_id, assignee_id, title, description, start_date, end_date, due_date, milestone_id, created_at, updated_at, status_id, status_workflow_id, status_key, status_label, status_category, status_position, status_is_initial, child_ticket_count, child_done_ticket_count";
 
 pub(crate) fn row_to_ticket(row: TicketRow) -> Ticket {
     Ticket {
@@ -71,6 +92,8 @@ pub(crate) fn row_to_ticket(row: TicketRow) -> Ticket {
         milestone_id: row.milestone_id,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        child_ticket_count: row.child_ticket_count,
+        child_done_ticket_count: row.child_done_ticket_count,
     }
 }
 
@@ -305,6 +328,24 @@ pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result
                     "this status transition is not allowed by the project's workflow".to_string(),
                 ));
             }
+
+            // A ticket can't move into a "done"-category status (done,
+            // closed, ...) while any ticket in its subtree - not just direct
+            // children - still isn't done itself. current.child_*_count
+            // already counts the whole subtree recursively (see
+            // TICKET_SELECT_COLUMNS), so this is just comparing two counts.
+            let (new_status_category,): (String,) =
+                sqlx::query_as("SELECT category FROM workflow_statuses WHERE id = $1")
+                    .bind(new_status_id)
+                    .fetch_one(db)
+                    .await
+                    .map_err(AppError::Database)?;
+            if new_status_category == "done" && current.child_done_ticket_count < current.child_ticket_count {
+                return Err(AppError::BadRequest(
+                    "all child tickets must be done before this ticket can be closed".to_string(),
+                ));
+            }
+
             new_status_id
         }
         _ => current.status.id,
