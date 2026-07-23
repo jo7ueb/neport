@@ -147,6 +147,7 @@ fn describe_session(started_at: DateTime<Utc>, ended_at: Option<DateTime<Utc>>) 
 pub async fn update(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(id): Path<i64>,
     Json(payload): Json<UpdateSessionRequest>,
 ) -> Result<Json<WorkSession>> {
@@ -181,6 +182,7 @@ pub async fn update(
         Some(id),
         Some(&describe_session(existing.started_at, existing.ended_at)),
         Some(&describe_session(updated.started_at, updated.ended_at)),
+        ip.as_deref(),
     )
     .await?;
 

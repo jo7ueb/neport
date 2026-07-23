@@ -286,12 +286,13 @@ async fn record_update_activity(
 pub async fn delete_ticket(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(id): Path<i64>,
 ) -> Result<StatusCode> {
     let ticket = repo::get_ticket(&state.db, id).await?.ok_or(AppError::NotFound)?;
     access::check_project_access(&state.db, &user, ticket.project_id, Access::Write).await?;
     repo::delete_ticket(&state.db, id).await?;
-    crate::audit::repo::record(&state.db, user.id, "ticket_deleted", "ticket", Some(id), Some(&ticket.title), None).await?;
+    crate::audit::repo::record(&state.db, user.id, "ticket_deleted", "ticket", Some(id), Some(&ticket.title), None, ip.as_deref()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

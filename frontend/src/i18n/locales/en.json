@@ -271,6 +271,7 @@
     "columnAction": "Action",
     "columnTarget": "Target",
     "columnDetail": "Detail",
+    "columnIp": "IP Address",
     "empty": "No matching audit log entries.",
     "action": {
       "userSuspended": "Suspended user",
@@ -281,12 +282,17 @@
       "userPasswordReset": "Reset user's password",
       "approverRemoved": "Removed approver",
       "projectArchived": "Archived project",
+      "projectUnarchived": "Unarchived project",
       "projectMemberRemoved": "Removed project member",
       "systemSettingsUpdated": "Updated system settings",
       "ticketDeleted": "Deleted ticket",
       "workflowDeleted": "Deleted workflow",
       "workflowStatusDeleted": "Deleted workflow status",
-      "workflowTransitionDeleted": "Deleted workflow transition"
+      "workflowTransitionDeleted": "Deleted workflow transition",
+      "login": "Logged in",
+      "loginFailed": "Login failed",
+      "logout": "Logged out",
+      "passwordChanged": "Changed password"
     }
   },
   "adminBackup": {

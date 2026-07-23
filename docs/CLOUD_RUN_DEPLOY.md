@@ -304,6 +304,35 @@ gcloud run deploy neport-frontend \
   `resolver`ディレクティブは不要 - 実際に試行錯誤した経緯は
   [nginx.conf](../nginx.conf)のコメント参照）。
 
+### 監査ログのIPアドレスとCloud Runの2段プロキシ構成
+
+監査ログ（`/admin/audit-log`、`backend/src/audit/`）にはログイン・ログアウト等の
+実行者IPアドレスを記録している。docker-composeでは`nginx.conf`が
+`X-Real-IP $remote_addr`をそのままbackendに渡していたが、Cloud Runでは
+`frontend`（nginx）自身がGoogleの内部プロキシ（GFE）から接続を受けるため、
+`$remote_addr`はブラウザのIPではなくGFE自身のIPになってしまう。
+
+そこで`nginx.conf`に`$true_client_ip`という`map`を追加し、Cloud Runが
+`frontend`サービスへの直接のリクエストに対して確実に設定する`X-Forwarded-For`の
+先頭エントリ（Google公式ドキュメントで明記）を優先し、それが無いトポロジ
+（docker-compose、ローカルの`cargo run`+curl）では`$remote_addr`にフォールバック
+するようにした。この値を`X-Real-IP`としてbackendに転送する。
+
+**未検証のまま踏み込んだ判断**: `frontend`（nginx）が`backend`のCloud Run URLを
+呼ぶのは「Cloud Run→Cloud Runの2段目の呼び出し」になるが、この2段目でGFEが
+`X-Forwarded-For`を（前段の値を維持して）追記するのか、上書きしてしまうのかは
+Google公式ドキュメントに明記がなく、断定できなかった。そのため
+`backend/src/audit/client_ip.rs`の`ClientIp`抽出は`X-Forwarded-For`ではなく
+`X-Real-IP`を優先する設計にしている - `X-Real-IP`は`frontend`のnginxが1段目
+（ここは確実に正しい）で確定させて設定する値であり、Cloud Run自身が転送用に
+管理するヘッダーではない（GFEが書き換える理由を持つのは`X-Forwarded-For`/
+`X-Forwarded-Proto`のような標準の転送ヘッダーのみと考えられる）ため、2段目を
+素通りする可能性がより高いという判断。**ただしこれはこの環境にGCP認証情報が
+なく実際にCloud Runへデプロイして検証できなかったための推測であり、確証はない。**
+デプロイ後、監査ログに記録されたIPが実際に自分のインターネット側IPと一致するかを
+確認してほしい。一致しない場合は、`nginx.conf`の`$true_client_ip`マップか、
+GFEが2段目で`X-Real-IP`ヘッダー自体を素通ししていない可能性を疑うこと。
+
 ## 5. カスタムドメイン（任意）
 
 `neport-frontend-xxxxxxxx.a.run.app`ではなく独自ドメイン（例: `neport.example.com`）

@@ -14,6 +14,7 @@ type AuditLogRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<String>,
     DateTime<Utc>,
 );
 
@@ -24,7 +25,7 @@ type AuditLogRow = (
 // since the row is already gone by the time it's recorded), and
 // system_settings has no target_id at all.
 const SELECT_SQL: &str = "SELECT a.id, a.actor_id, actor.display_name, a.action, a.target_type, a.target_id,
-        COALESCE(tu.display_name, tp.name, tt.title, tw.name), a.from_text, a.to_text, a.occurred_at
+        COALESCE(tu.display_name, tp.name, tt.title, tw.name), a.from_text, a.to_text, a.ip_address, a.occurred_at
      FROM audit_log a
      JOIN users actor ON actor.id = a.actor_id
      LEFT JOIN users tu ON tu.id = a.target_id AND a.target_type IN ('user', 'user_approver', 'project_member')
@@ -33,8 +34,8 @@ const SELECT_SQL: &str = "SELECT a.id, a.actor_id, actor.display_name, a.action,
      LEFT JOIN workflows tw ON tw.id = a.target_id AND a.target_type = 'workflow'";
 
 fn row_to_entry(row: AuditLogRow) -> AuditLogEntry {
-    let (id, actor_id, actor_name, action, target_type, target_id, target_name, from_text, to_text, occurred_at) = row;
-    AuditLogEntry { id, actor_id, actor_name, action, target_type, target_id, target_name, from_text, to_text, occurred_at }
+    let (id, actor_id, actor_name, action, target_type, target_id, target_name, from_text, to_text, ip_address, occurred_at) = row;
+    AuditLogEntry { id, actor_id, actor_name, action, target_type, target_id, target_name, from_text, to_text, ip_address, occurred_at }
 }
 
 // from/to are plain calendar dates (as offered by an <input type="date">
@@ -94,10 +95,11 @@ pub async fn record(
     target_id: Option<i64>,
     from_text: Option<&str>,
     to_text: Option<&str>,
+    ip_address: Option<&str>,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO audit_log (actor_id, action, target_type, target_id, from_text, to_text, occurred_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())",
+        "INSERT INTO audit_log (actor_id, action, target_type, target_id, from_text, to_text, ip_address, occurred_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
     )
     .bind(actor_id)
     .bind(action)
@@ -105,6 +107,7 @@ pub async fn record(
     .bind(target_id)
     .bind(from_text)
     .bind(to_text)
+    .bind(ip_address)
     .execute(db)
     .await
     .map_err(AppError::Database)?;

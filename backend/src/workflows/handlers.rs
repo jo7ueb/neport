@@ -61,6 +61,7 @@ pub async fn update_workflow(
 pub async fn delete_workflow(
     State(state): State<Arc<AppState>>,
     AdminUser(admin): AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(id): Path<i64>,
 ) -> Result<StatusCode> {
     let workflow = repo::get_workflow(&state.db, id).await?.ok_or(AppError::NotFound)?;
@@ -68,7 +69,7 @@ pub async fn delete_workflow(
         return Err(AppError::BadRequest("the default workflow cannot be deleted".to_string()));
     }
     repo::delete_workflow(&state.db, id).await?;
-    crate::audit::repo::record(&state.db, admin.id, "workflow_deleted", "workflow", Some(id), Some(&workflow.name), None).await?;
+    crate::audit::repo::record(&state.db, admin.id, "workflow_deleted", "workflow", Some(id), Some(&workflow.name), None, ip.as_deref()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -134,6 +135,7 @@ pub async fn update_status(
 pub async fn delete_status(
     State(state): State<Arc<AppState>>,
     AdminUser(admin): AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path((workflow_id, status_id)): Path<(i64, i64)>,
 ) -> Result<StatusCode> {
     let label = repo::list_statuses(&state.db, workflow_id)
@@ -142,7 +144,7 @@ pub async fn delete_status(
         .find(|s| s.id == status_id)
         .map(|s| s.label);
     repo::delete_status(&state.db, status_id).await?;
-    crate::audit::repo::record(&state.db, admin.id, "workflow_status_deleted", "workflow_status", Some(status_id), label.as_deref(), None).await?;
+    crate::audit::repo::record(&state.db, admin.id, "workflow_status_deleted", "workflow_status", Some(status_id), label.as_deref(), None, ip.as_deref()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -165,6 +167,7 @@ pub async fn create_transition(
 pub async fn delete_transition(
     State(state): State<Arc<AppState>>,
     AdminUser(admin): AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path((workflow_id, transition_id)): Path<(i64, i64)>,
 ) -> Result<StatusCode> {
     let label = repo::list_transitions(&state.db, workflow_id)
@@ -173,6 +176,6 @@ pub async fn delete_transition(
         .find(|t| t.id == transition_id)
         .map(|t| format!("{} -> {}", t.from_status_id, t.to_status_id));
     repo::delete_transition(&state.db, transition_id).await?;
-    crate::audit::repo::record(&state.db, admin.id, "workflow_transition_deleted", "workflow_transition", Some(transition_id), label.as_deref(), None).await?;
+    crate::audit::repo::record(&state.db, admin.id, "workflow_transition_deleted", "workflow_transition", Some(transition_id), label.as_deref(), None, ip.as_deref()).await?;
     Ok(StatusCode::NO_CONTENT)
 }

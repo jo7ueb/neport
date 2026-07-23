@@ -68,6 +68,7 @@ pub async fn update_member(
 pub async fn remove_member(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path((project_id, member_user_id)): Path<(i64, i64)>,
 ) -> Result<StatusCode> {
     access::check_project_access(&state.db, &user, project_id, Access::Manage).await?;
@@ -83,6 +84,7 @@ pub async fn remove_member(
         Some(member_user_id),
         None,
         Some(&project_id.to_string()),
+        ip.as_deref(),
     )
     .await?;
     Ok(StatusCode::NO_CONTENT)

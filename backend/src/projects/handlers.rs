@@ -127,21 +127,23 @@ pub async fn update_project(
 pub async fn archive_project(
     State(state): State<Arc<AppState>>,
     crate::auth::extractors::AdminUser(user): crate::auth::extractors::AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(id): Path<i64>,
 ) -> Result<StatusCode> {
     repo::get_project(&state.db, id).await?.ok_or(AppError::NotFound)?;
     repo::archive_project(&state.db, id).await?;
-    crate::audit::repo::record(&state.db, user.id, "project_archived", "project", Some(id), None, None).await?;
+    crate::audit::repo::record(&state.db, user.id, "project_archived", "project", Some(id), None, None, ip.as_deref()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn unarchive_project(
     State(state): State<Arc<AppState>>,
     crate::auth::extractors::AdminUser(user): crate::auth::extractors::AdminUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(id): Path<i64>,
 ) -> Result<StatusCode> {
     repo::get_project(&state.db, id).await?.ok_or(AppError::NotFound)?;
     repo::unarchive_project(&state.db, id).await?;
-    crate::audit::repo::record(&state.db, user.id, "project_unarchived", "project", Some(id), None, None).await?;
+    crate::audit::repo::record(&state.db, user.id, "project_unarchived", "project", Some(id), None, None, ip.as_deref()).await?;
     Ok(StatusCode::NO_CONTENT)
 }

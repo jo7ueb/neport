@@ -17,12 +17,17 @@ const ACTION_KEYS = {
   user_password_reset: 'adminAuditLog.action.userPasswordReset',
   approver_removed: 'adminAuditLog.action.approverRemoved',
   project_archived: 'adminAuditLog.action.projectArchived',
+  project_unarchived: 'adminAuditLog.action.projectUnarchived',
   project_member_removed: 'adminAuditLog.action.projectMemberRemoved',
   system_settings_updated: 'adminAuditLog.action.systemSettingsUpdated',
   ticket_deleted: 'adminAuditLog.action.ticketDeleted',
   workflow_deleted: 'adminAuditLog.action.workflowDeleted',
   workflow_status_deleted: 'adminAuditLog.action.workflowStatusDeleted',
   workflow_transition_deleted: 'adminAuditLog.action.workflowTransitionDeleted',
+  login: 'adminAuditLog.action.login',
+  login_failed: 'adminAuditLog.action.loginFailed',
+  logout: 'adminAuditLog.action.logout',
+  password_changed: 'adminAuditLog.action.passwordChanged',
 } as const satisfies Record<AuditAction, string>
 
 export function AdminAuditLogPage() {
@@ -119,12 +124,13 @@ export function AdminAuditLogPage() {
               <th className="px-3 py-2">{t('adminAuditLog.columnAction')}</th>
               <th className="px-3 py-2">{t('adminAuditLog.columnTarget')}</th>
               <th className="px-3 py-2">{t('adminAuditLog.columnDetail')}</th>
+              <th className="px-3 py-2">{t('adminAuditLog.columnIp')}</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {data?.items.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-gray-400">
+                <td colSpan={6} className="px-3 py-6 text-center text-gray-400">
                   {t('adminAuditLog.empty')}
                 </td>
               </tr>
@@ -144,6 +150,7 @@ export function AdminAuditLogPage() {
                     ? `${entry.from_text} → ${entry.to_text}`
                     : entry.to_text ?? entry.from_text ?? ''}
                 </td>
+                <td className="px-3 py-2 whitespace-nowrap text-gray-500">{entry.ip_address ?? '—'}</td>
               </tr>
             ))}
           </tbody>

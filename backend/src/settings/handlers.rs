@@ -27,6 +27,7 @@ pub struct UpdateSettingsRequest {
 pub async fn update_settings(
     State(state): State<Arc<AppState>>,
     MaintenanceModeAdmin(admin): MaintenanceModeAdmin,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Json(payload): Json<UpdateSettingsRequest>,
 ) -> Result<Json<SystemSettings>> {
     if !crate::time::is_valid_timezone(&payload.default_timezone) {
@@ -48,6 +49,7 @@ pub async fn update_settings(
             "katex_enabled={}, default_timezone={}, maintenance_mode={}",
             settings.katex_enabled, settings.default_timezone, settings.maintenance_mode
         )),
+        ip.as_deref(),
     )
     .await?;
     Ok(Json(settings))

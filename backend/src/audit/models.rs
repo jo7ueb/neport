@@ -15,5 +15,6 @@ pub struct AuditLogEntry {
     pub target_name: Option<String>,
     pub from_text: Option<String>,
     pub to_text: Option<String>,
+    pub ip_address: Option<String>,
     pub occurred_at: DateTime<Utc>,
 }

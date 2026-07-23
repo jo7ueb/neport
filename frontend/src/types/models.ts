@@ -129,12 +129,17 @@ export type AuditAction =
   | 'user_password_reset'
   | 'approver_removed'
   | 'project_archived'
+  | 'project_unarchived'
   | 'project_member_removed'
   | 'system_settings_updated'
   | 'ticket_deleted'
   | 'workflow_deleted'
   | 'workflow_status_deleted'
   | 'workflow_transition_deleted'
+  | 'login'
+  | 'login_failed'
+  | 'logout'
+  | 'password_changed'
 
 export interface AuditLogEntry {
   id: number
@@ -146,6 +151,7 @@ export interface AuditLogEntry {
   target_name: string | null
   from_text: string | null
   to_text: string | null
+  ip_address: string | null
   occurred_at: string
 }
 

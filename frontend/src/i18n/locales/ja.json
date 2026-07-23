@@ -271,6 +271,7 @@
     "columnAction": "操作",
     "columnTarget": "対象",
     "columnDetail": "詳細",
+    "columnIp": "IPアドレス",
     "empty": "該当する監査ログはありません。",
     "action": {
       "userSuspended": "ユーザーを停止",
@@ -281,12 +282,17 @@
       "userPasswordReset": "ユーザーのパスワードをリセット",
       "approverRemoved": "承認者を解除",
       "projectArchived": "プロジェクトをアーカイブ",
+      "projectUnarchived": "プロジェクトのアーカイブを解除",
       "projectMemberRemoved": "プロジェクトメンバーを削除",
       "systemSettingsUpdated": "システム設定を変更",
       "ticketDeleted": "チケットを削除",
       "workflowDeleted": "ワークフローを削除",
       "workflowStatusDeleted": "ワークフローのステータスを削除",
-      "workflowTransitionDeleted": "ワークフローの状態遷移を削除"
+      "workflowTransitionDeleted": "ワークフローの状態遷移を削除",
+      "login": "ログイン",
+      "loginFailed": "ログイン失敗",
+      "logout": "ログアウト",
+      "passwordChanged": "パスワードを変更"
     }
   },
   "adminBackup": {

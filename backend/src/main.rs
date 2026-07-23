@@ -334,6 +334,7 @@ mod rate_limit_tests {
 
 async fn auth_login(
     State(state): State<Arc<AppState>>,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     Json(payload): Json<auth::LoginRequest>,
 ) -> Result<(StatusCode, [(header::HeaderName, String); 1], Json<auth::LoginResponse>)> {
     let user_data = users::repo::get_user_by_email(&state.db, &payload.email)
@@ -341,6 +342,7 @@ async fn auth_login(
         .ok_or(AppError::InvalidCredentials)?;
 
     if user_data.user.status != auth::UserStatus::Active {
+        audit::repo::record(&state.db, user_data.user.id, "login_failed", "user", Some(user_data.user.id), None, None, ip.as_deref()).await?;
         return Err(AppError::InvalidCredentials);
     }
 
@@ -348,11 +350,14 @@ async fn auth_login(
         .map_err(|_| AppError::InvalidCredentials)?;
 
     if !password_valid {
+        audit::repo::record(&state.db, user_data.user.id, "login_failed", "user", Some(user_data.user.id), None, None, ip.as_deref()).await?;
         return Err(AppError::InvalidCredentials);
     }
 
     let session = auth::create_session(&state.db, user_data.user.id, state.session_ttl_seconds)
         .await?;
+
+    audit::repo::record(&state.db, user_data.user.id, "login", "user", Some(user_data.user.id), None, None, ip.as_deref()).await?;
 
     let cookie = format!(
         "{}={}; Path=/; HttpOnly; Secure; SameSite=Lax",
@@ -371,6 +376,7 @@ async fn auth_login(
 
 async fn auth_logout(
     State(state): State<Arc<AppState>>,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     headers: axum::http::HeaderMap,
 ) -> Result<(StatusCode, [(header::HeaderName, String); 1], Json<serde_json::Value>)> {
     if let Some(cookie_header) = headers.get(header::COOKIE).and_then(|v| v.to_str().ok()) {
@@ -383,6 +389,7 @@ async fn auth_logout(
                     if provided != Some(sess.csrf_token.as_str()) {
                         return Err(AppError::InvalidCsrf);
                     }
+                    audit::repo::record(&state.db, sess.user_id, "logout", "user", Some(sess.user_id), None, None, ip.as_deref()).await?;
                 }
                 let _ = auth::session::delete_session(&state.db, session_id).await;
             }
@@ -492,23 +499,25 @@ async fn search_users(
 async fn suspend_user(
     State(state): State<Arc<AppState>>,
     auth::extractors::AdminUser(admin): auth::extractors::AdminUser,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     Path(user_id): Path<i64>,
 ) -> Result<Json<serde_json::Value>> {
     if admin.id == user_id {
         return Err(AppError::BadRequest("cannot suspend your own account".into()));
     }
     users::repo::suspend_user(&state.db, user_id).await?;
-    audit::repo::record(&state.db, admin.id, "user_suspended", "user", Some(user_id), None, None).await?;
+    audit::repo::record(&state.db, admin.id, "user_suspended", "user", Some(user_id), None, None, ip.as_deref()).await?;
     Ok(Json(json!({"message": "User suspended"})))
 }
 
 async fn resume_user(
     State(state): State<Arc<AppState>>,
     auth::extractors::AdminUser(admin): auth::extractors::AdminUser,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     Path(user_id): Path<i64>,
 ) -> Result<Json<serde_json::Value>> {
     users::repo::resume_user(&state.db, user_id).await?;
-    audit::repo::record(&state.db, admin.id, "user_resumed", "user", Some(user_id), None, None).await?;
+    audit::repo::record(&state.db, admin.id, "user_resumed", "user", Some(user_id), None, None, ip.as_deref()).await?;
     Ok(Json(json!({"message": "User resumed"})))
 }
 
@@ -520,6 +529,7 @@ struct UpdateRoleRequest {
 async fn update_user_role(
     State(state): State<Arc<AppState>>,
     auth::extractors::AdminUser(admin): auth::extractors::AdminUser,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     Path(user_id): Path<i64>,
     Json(payload): Json<UpdateRoleRequest>,
 ) -> Result<Json<serde_json::Value>> {
@@ -536,6 +546,7 @@ async fn update_user_role(
         Some(user_id),
         Some(&target.role.to_string()),
         Some(&payload.role.to_string()),
+        ip.as_deref(),
     )
     .await?;
     Ok(Json(json!({ "message": "Role updated" })))
@@ -549,6 +560,7 @@ struct UpdateIsApproverRequest {
 async fn update_is_approver(
     State(state): State<Arc<AppState>>,
     auth::extractors::AdminUser(admin): auth::extractors::AdminUser,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     Path(user_id): Path<i64>,
     Json(payload): Json<UpdateIsApproverRequest>,
 ) -> Result<Json<serde_json::Value>> {
@@ -562,6 +574,7 @@ async fn update_is_approver(
         Some(user_id),
         Some(&target.is_approver.to_string()),
         Some(&payload.is_approver.to_string()),
+        ip.as_deref(),
     )
     .await?;
     Ok(Json(json!({ "message": "Updated" })))
@@ -602,6 +615,7 @@ async fn add_approver(
 async fn remove_approver(
     State(state): State<Arc<AppState>>,
     auth::extractors::AdminUser(admin): auth::extractors::AdminUser,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     Path((user_id, approver_id)): Path<(i64, i64)>,
 ) -> Result<Json<serde_json::Value>> {
     approvals::repo::remove_approver(&state.db, user_id, approver_id).await?;
@@ -613,6 +627,7 @@ async fn remove_approver(
         Some(user_id),
         None,
         Some(&approver_id.to_string()),
+        ip.as_deref(),
     )
     .await?;
     Ok(Json(json!({ "message": "Removed" })))
@@ -621,6 +636,7 @@ async fn remove_approver(
 async fn reset_user_password(
     State(state): State<Arc<AppState>>,
     auth::extractors::AdminUser(admin): auth::extractors::AdminUser,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     Path(user_id): Path<i64>,
 ) -> Result<Json<serde_json::Value>> {
     let temp_password = auth::password::generate_temp_password();
@@ -630,7 +646,7 @@ async fn reset_user_password(
     // their old password, so any of their existing sessions could belong to
     // whoever had it - kill all of them.
     auth::session::delete_all_sessions_for_user(&state.db, user_id).await?;
-    audit::repo::record(&state.db, admin.id, "user_password_reset", "user", Some(user_id), None, None).await?;
+    audit::repo::record(&state.db, admin.id, "user_password_reset", "user", Some(user_id), None, None, ip.as_deref()).await?;
     Ok(Json(json!({ "temporary_password": temp_password })))
 }
 
@@ -642,6 +658,7 @@ struct ChangePasswordRequest {
 
 async fn change_password(
     State(state): State<Arc<AppState>>,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     headers: axum::http::HeaderMap,
     auth::extractors::AuthUser(user): auth::extractors::AuthUser,
     Json(payload): Json<ChangePasswordRequest>,
@@ -669,6 +686,8 @@ async fn change_password(
     {
         auth::session::delete_other_sessions_for_user(&state.db, user.id, session_id).await?;
     }
+
+    audit::repo::record(&state.db, user.id, "password_changed", "user", Some(user.id), None, None, ip.as_deref()).await?;
 
     Ok(Json(json!({ "message": "Password updated" })))
 }
