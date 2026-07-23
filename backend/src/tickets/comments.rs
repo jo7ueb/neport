@@ -54,8 +54,18 @@ pub mod handlers {
             }
             recipients.sort_unstable();
             recipients.dedup();
-            for recipient_id in recipients {
-                crate::notifications::repo::notify_ticket_commented(&state.db, recipient_id, user.id, ticket_id).await?;
+            for recipient_id in &recipients {
+                crate::notifications::repo::notify_ticket_commented(&state.db, *recipient_id, user.id, ticket_id).await?;
+            }
+
+            // Anyone @mentioned in the comment who isn't already a stakeholder
+            // gets a separate "mentioned you" notification instead of a
+            // redundant second "commented" one.
+            for mentioned_id in crate::mentions::extract_mentioned_user_ids(&payload.body) {
+                if recipients.contains(&mentioned_id) {
+                    continue;
+                }
+                crate::notifications::repo::notify_mentioned_in_ticket(&state.db, mentioned_id, user.id, ticket_id).await?;
             }
         }
 

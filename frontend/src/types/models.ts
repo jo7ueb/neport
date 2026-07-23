@@ -109,6 +109,8 @@ export type NotificationType =
   | 'ticket_commented'
   | 'report_approved'
   | 'report_rejected'
+  | 'ticket_mentioned'
+  | 'report_mentioned'
 
 export interface Notification {
   id: number

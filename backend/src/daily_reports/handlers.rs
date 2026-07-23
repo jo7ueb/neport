@@ -54,7 +54,8 @@ pub async fn submit_report(
         }
     };
 
-    if let Some(existing) = repo::get_report(&state.db, user.id, date).await? {
+    let existing = repo::get_report(&state.db, user.id, date).await?;
+    if let Some(existing) = &existing {
         match approvals::repo::check_report_lock(&state.db, user.id, date, existing.submitted_at).await? {
             Some(approvals::models::LockReason::Approved) => {
                 return Err(AppError::BadRequest(
@@ -70,6 +71,14 @@ pub async fn submit_report(
         }
     }
 
+    let old_text = report_mention_text(existing.as_ref().map(|r| (
+        r.achievement.as_deref(), r.leftover.as_deref(), r.keep.as_deref(), r.problem.as_deref(), r.try_.as_deref(),
+    )).unwrap_or_default());
+    let new_text = report_mention_text((
+        payload.achievement.as_deref(), payload.leftover.as_deref(), payload.keep.as_deref(),
+        payload.problem.as_deref(), payload.try_.as_deref(),
+    ));
+
     let report = repo::upsert_report(
         &state.db,
         user.id,
@@ -82,7 +91,23 @@ pub async fn submit_report(
     )
     .await?;
 
+    for mentioned_id in crate::mentions::newly_mentioned(&old_text, &new_text) {
+        crate::notifications::repo::notify_mentioned_in_report(&state.db, mentioned_id, user.id, date).await?;
+    }
+
     Ok(Json(report))
+}
+
+// Concatenates the report's five free-text KPT fields into one string for
+// mention extraction - which field a mention lives in doesn't matter, only
+// whether it's new since the last save (see mentions::newly_mentioned).
+fn report_mention_text(fields: (Option<&str>, Option<&str>, Option<&str>, Option<&str>, Option<&str>)) -> String {
+    let (achievement, leftover, keep, problem, try_) = fields;
+    [achievement, leftover, keep, problem, try_]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub async fn list_reports(

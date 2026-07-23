@@ -6,6 +6,10 @@ import { getUnreadCount, listNotifications, markAllNotificationsRead, markNotifi
 import type { Notification, NotificationType } from '../types/models'
 
 function notificationLink(n: Notification): string | null {
+  // Mentions in a daily report have no link: GET /daily-reports/:date always
+  // resolves to the caller's own report, so there's no page a mentioned user
+  // could navigate to that would show the report they were mentioned in.
+  if (n.notif_type === 'report_mentioned') return null
   if (n.ticket_id) return `/tickets/${n.ticket_id}`
   if (n.report_date) return `/daily-report/${n.report_date}`
   return null
@@ -17,6 +21,8 @@ const MESSAGE_KEYS = {
   ticket_commented: 'notifications.ticketCommented',
   report_approved: 'notifications.reportApproved',
   report_rejected: 'notifications.reportRejected',
+  ticket_mentioned: 'notifications.ticketMentioned',
+  report_mentioned: 'notifications.reportMentioned',
 } as const satisfies Record<NotificationType, string>
 
 function NotificationMessage({ n }: { n: Notification }) {

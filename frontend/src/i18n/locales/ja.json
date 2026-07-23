@@ -457,7 +457,9 @@
     "ticketOverdue": "チケット #{{id}} {{title}} の期限が過ぎています",
     "ticketCommented": "{{actor}}さんがチケット #{{id}} {{title}} にコメントしました",
     "reportApproved": "{{date}}の日報が承認されました",
-    "reportRejected": "{{date}}の日報が却下されました"
+    "reportRejected": "{{date}}の日報が却下されました",
+    "ticketMentioned": "{{actor}}さんがチケット #{{id}} {{title}} であなたをメンションしました",
+    "reportMentioned": "{{actor}}さんが{{date}}の日報であなたをメンションしました"
   },
   "approvals": {
     "title": "承認",

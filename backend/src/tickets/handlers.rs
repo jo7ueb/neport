@@ -152,6 +152,10 @@ pub async fn create_ticket(
         crate::notifications::repo::notify_ticket_assigned(&state.db, assignee_id, user.id, ticket.id).await?;
     }
 
+    for mentioned_id in crate::mentions::extract_mentioned_user_ids(payload.description.as_deref().unwrap_or("")) {
+        crate::notifications::repo::notify_mentioned_in_ticket(&state.db, mentioned_id, user.id, ticket.id).await?;
+    }
+
     Ok((StatusCode::CREATED, Json(ticket)))
 }
 
@@ -250,6 +254,12 @@ async fn record_update_activity(
             before.description.as_deref().map(truncate_text),
             after.description.as_deref().map(truncate_text),
         ).await?;
+
+        let old_text = before.description.as_deref().unwrap_or("");
+        let new_text = after.description.as_deref().unwrap_or("");
+        for mentioned_id in crate::mentions::newly_mentioned(old_text, new_text) {
+            crate::notifications::repo::notify_mentioned_in_ticket(&state.db, mentioned_id, user_id, ticket_id).await?;
+        }
     }
     if before.due_date != after.due_date {
         activity_log::repo::record_field_change(

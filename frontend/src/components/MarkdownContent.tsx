@@ -5,6 +5,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { Link } from 'react-router-dom'
 import { remarkTicketRefs } from '../lib/remarkTicketRefs'
+import { remarkUserMentions } from '../lib/remarkUserMentions'
 import { useSettings } from '../context/SettingsContext'
 import { MermaidDiagram } from './MermaidDiagram'
 
@@ -16,8 +17,8 @@ function isMermaidCodeElement(node: unknown): node is { props: { className?: str
 export function MarkdownContent({ text }: { text: string }) {
   const { katexEnabled } = useSettings()
   const remarkPlugins = katexEnabled
-    ? [remarkGfm, remarkMath, remarkTicketRefs]
-    : [remarkGfm, remarkTicketRefs]
+    ? [remarkGfm, remarkMath, remarkTicketRefs, remarkUserMentions]
+    : [remarkGfm, remarkTicketRefs, remarkUserMentions]
   const rehypePlugins = katexEnabled ? [rehypeKatex] : []
 
   return (
@@ -29,6 +30,8 @@ export function MarkdownContent({ text }: { text: string }) {
           a: ({ href, children }) =>
             href?.startsWith('/') ? (
               <Link to={href}>{children}</Link>
+            ) : href?.startsWith('user:') ? (
+              <span className="font-medium text-blue-700">{children}</span>
             ) : (
               <a href={href} target="_blank" rel="noopener noreferrer">
                 {children}

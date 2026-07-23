@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { uploadAttachment } from '../api/attachments'
 import { searchTickets } from '../api/tickets'
+import { searchUsers } from '../api/users'
 import { getErrorMessage } from '../i18n/apiErrors'
-import type { Ticket } from '../types/models'
+import type { Ticket, User } from '../types/models'
 import { MarkdownContent } from './MarkdownContent'
 
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
@@ -24,9 +25,11 @@ interface MarkdownFieldProps {
   startInPreview?: boolean
 }
 
-// Tracks an in-progress "#123" mention being typed: `start` is the index of
-// the "#" so the picked ticket id can be spliced back in at the right spot.
+// Tracks an in-progress "#123" ticket-ref or "@name" user-mention being
+// typed: `start` is the index of the trigger character ("#"/"@") so the
+// picked item can be spliced back in at the right spot.
 interface MentionState {
+  kind: 'ticket' | 'user'
   query: string
   start: number
 }
@@ -51,12 +54,19 @@ export function MarkdownField({
   const valueRef = useRef(value)
   valueRef.current = value
 
-  const { data: mentionResults } = useQuery({
+  const { data: ticketResults } = useQuery({
     queryKey: ['tickets', 'search', mention?.query],
     queryFn: () => searchTickets(mention!.query),
-    enabled: mention !== null,
+    enabled: mention?.kind === 'ticket',
     staleTime: 30_000,
   })
+  const { data: userResults } = useQuery({
+    queryKey: ['users', 'search', mention?.query],
+    queryFn: () => searchUsers(mention!.query),
+    enabled: mention?.kind === 'user',
+    staleTime: 30_000,
+  })
+  const mentionResults = mention?.kind === 'user' ? userResults : ticketResults
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
     const newValue = e.target.value
@@ -64,20 +74,27 @@ export function MarkdownField({
 
     const caret = e.target.selectionStart
     const upToCaret = newValue.slice(0, caret)
-    const match = /#(\d*)$/.exec(upToCaret)
-    if (match) {
-      setMention({ query: match[1], start: caret - match[0].length })
+    const ticketMatch = /#(\d*)$/.exec(upToCaret)
+    // Requires the "@" to be at the start of the text or preceded by
+    // whitespace, so typing an inline email address doesn't spuriously pop
+    // up the user-search dropdown.
+    const userMatch = /(?:^|\s)@([^\s]*)$/.exec(upToCaret)
+    if (ticketMatch) {
+      setMention({ kind: 'ticket', query: ticketMatch[1], start: caret - ticketMatch[0].length })
+      setSelectedIndex(0)
+    } else if (userMatch) {
+      setMention({ kind: 'user', query: userMatch[1], start: caret - userMatch[1].length - 1 })
       setSelectedIndex(0)
     } else {
       setMention(null)
     }
   }
 
-  function selectTicket(ticket: Ticket) {
+  function selectMention(item: Ticket | User) {
     if (!mention) return
     const before = value.slice(0, mention.start)
     const after = value.slice(mention.start + 1 + mention.query.length)
-    const inserted = `#${ticket.id} `
+    const inserted = mention.kind === 'ticket' ? `#${item.id} ` : `@[${(item as User).display_name}](user:${item.id}) `
     onChange(before + inserted + after)
     setMention(null)
 
@@ -98,7 +115,7 @@ export function MarkdownField({
       setSelectedIndex((i) => (i - 1 + mentionResults.length) % mentionResults.length)
     } else if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault()
-      selectTicket(mentionResults[selectedIndex])
+      selectMention(mentionResults[selectedIndex])
     } else if (e.key === 'Escape') {
       setMention(null)
     }
@@ -211,16 +228,25 @@ export function MarkdownField({
           {uploadError && <div className="mt-1 text-xs text-red-600">{uploadError}</div>}
           {mention && mentionResults && mentionResults.length > 0 && (
             <ul className="mt-1 max-h-40 overflow-y-auto rounded border border-gray-200 bg-white text-sm shadow-sm">
-              {mentionResults.map((ticket, i) => (
+              {mentionResults.map((item, i) => (
                 <li
-                  key={ticket.id}
+                  key={item.id}
                   onMouseDown={(e) => {
                     e.preventDefault()
-                    selectTicket(ticket)
+                    selectMention(item)
                   }}
                   className={`cursor-pointer px-2 py-1 ${i === selectedIndex ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                 >
-                  <span className="font-mono text-gray-500">#{ticket.id}</span> {ticket.title}
+                  {mention.kind === 'ticket' ? (
+                    <>
+                      <span className="font-mono text-gray-500">#{item.id}</span> {(item as Ticket).title}
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium">{(item as User).display_name}</span>{' '}
+                      <span className="text-gray-400">{(item as User).email}</span>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

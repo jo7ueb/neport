@@ -24,6 +24,7 @@ mod config;
 mod daily_reports;
 mod error;
 mod gantt;
+mod mentions;
 mod milestones;
 mod notifications;
 mod pagination;

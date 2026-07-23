@@ -457,7 +457,9 @@
     "ticketOverdue": "Ticket #{{id}} {{title}} is overdue",
     "ticketCommented": "{{actor}} commented on ticket #{{id}} {{title}}",
     "reportApproved": "Your report for {{date}} was approved",
-    "reportRejected": "Your report for {{date}} was rejected"
+    "reportRejected": "Your report for {{date}} was rejected",
+    "ticketMentioned": "{{actor}} mentioned you in ticket #{{id}} {{title}}",
+    "reportMentioned": "{{actor}} mentioned you in their report for {{date}}"
   },
   "approvals": {
     "title": "Approvals",

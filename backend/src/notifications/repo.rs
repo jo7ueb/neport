@@ -67,6 +67,20 @@ pub async fn notify_report_decision(db: &PgPool, user_id: i64, approver_id: i64,
     create(db, user_id, notif_type, Some(approver_id), None, Some(date)).await
 }
 
+pub async fn notify_mentioned_in_ticket(db: &PgPool, recipient_id: i64, actor_id: i64, ticket_id: i64) -> Result<()> {
+    if recipient_id == actor_id {
+        return Ok(());
+    }
+    create(db, recipient_id, NotificationType::TicketMentioned, Some(actor_id), Some(ticket_id), None).await
+}
+
+pub async fn notify_mentioned_in_report(db: &PgPool, recipient_id: i64, actor_id: i64, date: NaiveDate) -> Result<()> {
+    if recipient_id == actor_id {
+        return Ok(());
+    }
+    create(db, recipient_id, NotificationType::ReportMentioned, Some(actor_id), None, Some(date)).await
+}
+
 // Run from a periodic background job (see main.rs). Inserts one
 // ticket_overdue notification per ticket the first time it's found overdue -
 // the partial unique index notifications_ticket_overdue_once keeps this
