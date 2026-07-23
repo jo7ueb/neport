@@ -78,7 +78,11 @@ function toTasks(rows: FlatRow[], dependencies: TicketDependency[]): GanttTask[]
 
   return rows.map(({ ticket }) => {
     const start = ticket.start_date ?? ticket.created_at.slice(0, 10)
-    let end = ticket.end_date ?? ticket.due_date ?? start
+    // The bar's end represents the due date, not end_date (which nothing
+    // else in the UI ever sets - see the on_date_change handler below,
+    // which saves a drag as due_date). end_date is only consulted as a
+    // fallback for older data saved before that was true.
+    let end = ticket.due_date ?? ticket.end_date ?? start
     if (end <= start) {
       end = addDays(start, 1)
     }
@@ -191,7 +195,7 @@ export function WbsGanttPanel({
 
   const dateMutation = useMutation({
     mutationFn: ({ ticketId, start, end }: { ticketId: number; start: string; end: string }) =>
-      updateTicket(ticketId, { start_date: start, end_date: end }),
+      updateTicket(ticketId, { start_date: start, due_date: end }),
     onSuccess: () => {
       setChartError(null)
       invalidate()

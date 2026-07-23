@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { deleteTicket, getTicket, listTicketChildren, updateTicket } from '../api/tickets'
+import { deleteTicket, getActualDuration, getTicket, listTicketChildren, updateTicket } from '../api/tickets'
 import { listAllUsers } from '../api/users'
 import { listMilestones } from '../api/milestones'
 import { getProjectWorkflow } from '../api/projects'
@@ -46,6 +46,11 @@ export function TicketViewPage() {
     queryKey: ['ticket', ticket?.parent_ticket_id, 'as-parent-of', tid],
     queryFn: () => getTicket(ticket!.parent_ticket_id!),
     enabled: !!ticket?.parent_ticket_id,
+  })
+  const { data: actualDuration } = useQuery({
+    queryKey: ['ticket', tid, 'actual-duration'],
+    queryFn: () => getActualDuration(tid),
+    enabled: !!ticket,
   })
   const { data: workflow } = useQuery({
     queryKey: ['project', ticket?.project_id, 'workflow'],
@@ -101,6 +106,12 @@ export function TicketViewPage() {
   function milestoneName(id: number | null): string | null {
     if (id === null) return null
     return milestones?.find((m) => m.id === id)?.name ?? `#${id}`
+  }
+
+  function formatActualDuration(seconds: number): string {
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    return t('ticket.detail.actualDurationValue', { hours, minutes })
   }
 
   return (
@@ -169,6 +180,12 @@ export function TicketViewPage() {
               <div>
                 <dt className="text-gray-500">{t('ticket.detail.assigneeLabel')}</dt>
                 <dd className="text-gray-800">{assigneeName(ticket.assignee_id)}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">{t('ticket.detail.actualDurationLabel')}</dt>
+                <dd className="text-gray-800">
+                  {actualDuration ? formatActualDuration(actualDuration.in_progress_seconds) : '-'}
+                </dd>
               </div>
               <div>
                 <dt className="text-gray-500">{t('ticket.detail.dueDateLabel')}</dt>

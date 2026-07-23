@@ -134,6 +134,24 @@ pub async fn list_for_ticket(db: &PgPool, ticket_id: i64, limit: i64, offset: i6
         .map(|rows| rows.into_iter().map(row_to_activity).collect())
 }
 
+// All status_change rows for a ticket, oldest first - the full unpaginated
+// history is needed to reconstruct how long it spent in each status (see
+// tickets::duration::in_progress_seconds), unlike list_for_ticket which is
+// paginated for the human-facing timeline view.
+pub async fn list_status_changes_for_ticket(
+    db: &PgPool,
+    ticket_id: i64,
+) -> Result<Vec<(chrono::DateTime<chrono::Utc>, i64, i64)>> {
+    sqlx::query_as::<_, (chrono::DateTime<chrono::Utc>, i64, i64)>(
+        "SELECT occurred_at, from_status_id, to_status_id FROM ticket_activity_log \
+         WHERE ticket_id = $1 AND activity_type = 'status_change' ORDER BY occurred_at ASC",
+    )
+    .bind(ticket_id)
+    .fetch_all(db)
+    .await
+    .map_err(AppError::Database)
+}
+
 pub async fn count_for_ticket(db: &PgPool, ticket_id: i64) -> Result<i64> {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ticket_activity_log WHERE ticket_id = $1")
         .bind(ticket_id)

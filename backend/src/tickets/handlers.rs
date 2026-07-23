@@ -318,3 +318,43 @@ pub async fn list_ticket_activity(
     let total = activity_log::repo::count_for_ticket(&state.db, id).await?;
     Ok(Json(Paginated::new(activities, total, &page)))
 }
+
+#[derive(serde::Serialize)]
+pub struct ActualDurationResponse {
+    // How long the ticket has (so far) spent in an in_progress-category
+    // status - see tickets::duration::in_progress_seconds for the exact
+    // reconstruction from its status_change history.
+    pub in_progress_seconds: i64,
+}
+
+pub async fn get_actual_duration(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Json<ActualDurationResponse>> {
+    let ticket = repo::get_ticket(&state.db, id).await?.ok_or(AppError::NotFound)?;
+    access::check_project_access(&state.db, &user, ticket.project_id, Access::Read).await?;
+
+    let changes = activity_log::repo::list_status_changes_for_ticket(&state.db, id).await?;
+    let statuses = crate::workflows::repo::list_statuses(&state.db, ticket.status.workflow_id).await?;
+    let categories: std::collections::HashMap<i64, StatusCategory> =
+        statuses.into_iter().map(|s| (s.id, s.category)).collect();
+    let changes: Vec<super::duration::StatusChange> = changes
+        .into_iter()
+        .map(|(occurred_at, from_status_id, to_status_id)| super::duration::StatusChange {
+            occurred_at,
+            from_status_id,
+            to_status_id,
+        })
+        .collect();
+
+    let in_progress_seconds = super::duration::in_progress_seconds(
+        ticket.created_at,
+        ticket.status.id,
+        &changes,
+        &categories,
+        chrono::Utc::now(),
+    );
+
+    Ok(Json(ActualDurationResponse { in_progress_seconds }))
+}

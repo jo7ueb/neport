@@ -1,5 +1,6 @@
 pub mod comments;
 pub mod dependencies;
+pub mod duration;
 pub mod handlers;
 pub mod models;
 pub mod repo;
@@ -18,4 +19,5 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/:id/dependencies/:dependency_id", delete(dependencies::handlers::delete_dependency))
         .route("/:id/comments", get(comments::handlers::list_comments).post(comments::handlers::create_comment))
         .route("/:id/activity", get(handlers::list_ticket_activity))
+        .route("/:id/actual-duration", get(handlers::get_actual_duration))
 }

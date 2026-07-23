@@ -123,3 +123,7 @@ export function listTicketActivity(
 ): Promise<Paginated<TicketActivity>> {
   return request<Paginated<TicketActivity>>(`/tickets/${ticketId}/activity`, { query: params })
 }
+
+export function getActualDuration(ticketId: number): Promise<{ in_progress_seconds: number }> {
+  return request<{ in_progress_seconds: number }>(`/tickets/${ticketId}/actual-duration`)
+}

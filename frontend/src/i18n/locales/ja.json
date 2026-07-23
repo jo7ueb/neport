@@ -134,6 +134,8 @@
       "statusLabel": "ステータス",
       "childProgressLabel": "子チケットの進捗",
       "assigneeLabel": "担当者",
+      "actualDurationLabel": "実所要時間",
+      "actualDurationValue": "{{hours}}時間{{minutes}}分",
       "dueDateLabel": "締切日",
       "parentTicket": "親チケット",
       "parentTicketLabel": "親チケット（クリアでルート化）",
@@ -180,6 +182,8 @@
     "updateFailed": "ロールの変更に失敗しました",
     "removeFailed": "メンバーの削除に失敗しました",
     "legacyOpenNotice": "このプロジェクトにはまだメンバーが設定されていません。メンバー未設定の間は全ユーザーが閲覧・編集できます。",
+    "editProject": "プロジェクト情報を編集",
+    "editFailed": "プロジェクト情報の更新に失敗しました",
     "role": {
       "label": "ロール",
       "manager": "管理者",
@@ -242,7 +246,9 @@
     "unassigned": "未設定",
     "empty": "タスクはまだありません",
     "indentAria": "インデント",
-    "outdentAria": "アウトデント"
+    "outdentAria": "アウトデント",
+    "milestoneFilterLabel": "マイルストーンで絞り込み:",
+    "milestoneFilterAll": "すべて"
   },
   "adminHub": {
     "title": "管理",

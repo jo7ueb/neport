@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { getTicket, updateTicket } from '../api/tickets'
-import { listAllUsers } from '../api/users'
+import { useAssignableUsers } from '../lib/useAssignableUsers'
 import { listMilestones } from '../api/milestones'
 import { getProjectWorkflow } from '../api/projects'
 import { MarkdownField } from '../components/MarkdownField'
@@ -25,7 +25,7 @@ export function TicketEditPage() {
     retry: false,
   })
 
-  const { data: users } = useQuery({ queryKey: ['users', 'all'], queryFn: listAllUsers })
+  const users = useAssignableUsers(ticket?.project_id)
   const { data: milestones } = useQuery({
     queryKey: ['milestones', ticket?.project_id],
     queryFn: () => listMilestones(ticket!.project_id),

@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { createTicket } from '../api/tickets'
 import { listMilestones } from '../api/milestones'
+import { useAssignableUsers } from '../lib/useAssignableUsers'
 import { Modal } from './Modal'
 import { MarkdownField } from './MarkdownField'
 import { UserPicker } from './UserPicker'
@@ -24,6 +25,7 @@ export function TicketCreateModal({ open, onClose, projectId, parentTicketId, on
     queryFn: () => listMilestones(projectId),
     enabled: open,
   })
+  const assignableUsers = useAssignableUsers(projectId)
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -94,7 +96,7 @@ export function TicketCreateModal({ open, onClose, projectId, parentTicketId, on
         <div className="flex gap-3">
           <div className="flex-1">
             <label className="mb-1 block text-sm font-medium text-gray-700">{t('ticket.detail.assigneeLabel')}</label>
-            <UserPicker value={assignee} onChange={setAssignee} />
+            <UserPicker value={assignee} onChange={setAssignee} candidates={assignableUsers ?? []} />
           </div>
           <div className="flex-1">
             <label className="mb-1 block text-sm font-medium text-gray-700">{t('ticket.detail.dueDateLabel')}</label>

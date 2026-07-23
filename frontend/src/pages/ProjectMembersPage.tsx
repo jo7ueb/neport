@@ -3,9 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
-import { getProject } from '../api/projects'
+import { getProject, updateProject } from '../api/projects'
 import { addProjectMember, listProjectMembers, removeProjectMember, updateProjectMemberRole } from '../api/projectMembers'
 import { listAllUsers } from '../api/users'
+import { Modal } from '../components/Modal'
 import { ProjectNav } from '../components/ProjectNav'
 import { UserAvatar } from '../components/UserAvatar'
 import { getErrorMessage } from '../i18n/apiErrors'
@@ -32,6 +33,33 @@ export function ProjectMembersPage() {
   const [error, setError] = useState<string | null>(null)
   const [newUserId, setNewUserId] = useState<number | ''>('')
   const [newRole, setNewRole] = useState<ProjectRole>('member')
+
+  const [showEdit, setShowEdit] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
+
+  function openEdit() {
+    setEditName(project?.name ?? '')
+    setEditDescription(project?.description ?? '')
+    setEditError(null)
+    setShowEdit(true)
+  }
+
+  const updateProjectMutation = useMutation({
+    mutationFn: () => updateProject(pid, { name: editName, description: editDescription }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', pid] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      setShowEdit(false)
+    },
+    onError: (err) => setEditError(getErrorMessage(err, t, 'projectMembers.editFailed')),
+  })
+
+  function handleEditSubmit(e: FormEvent) {
+    e.preventDefault()
+    updateProjectMutation.mutate()
+  }
 
   const addMutation = useMutation({
     mutationFn: () => addProjectMember(pid, Number(newUserId), newRole),
@@ -84,10 +112,56 @@ export function ProjectMembersPage() {
         <h1 className="text-2xl font-semibold text-gray-800">
           {project ? t('projectMembers.titleWithProject', { project: project.name }) : t('projectMembers.title')}
         </h1>
-        <Link to="/projects" className="text-sm text-blue-600 hover:underline">
-          {t('projectMembers.backToProjects')}
-        </Link>
+        <div className="flex items-center gap-3">
+          {canManage && (
+            <button onClick={openEdit} className="text-sm text-blue-600 hover:underline">
+              {t('projectMembers.editProject')}
+            </button>
+          )}
+          <Link to="/projects" className="text-sm text-blue-600 hover:underline">
+            {t('projectMembers.backToProjects')}
+          </Link>
+        </div>
       </div>
+
+      {project?.description && <p className="mb-4 text-sm text-gray-600">{project.description}</p>}
+
+      <Modal open={showEdit} onClose={() => setShowEdit(false)} title={t('projectMembers.editProject')}>
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          {editError && <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{editError}</div>}
+          <input
+            type="text"
+            required
+            placeholder={t('project.list.namePlaceholder')}
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            className="w-full rounded border border-gray-300 px-3 py-2"
+          />
+          <input
+            type="text"
+            placeholder={t('project.list.descriptionPlaceholder')}
+            value={editDescription}
+            onChange={(e) => setEditDescription(e.target.value)}
+            className="w-full rounded border border-gray-300 px-3 py-2"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowEdit(false)}
+              className="rounded border border-gray-300 px-4 py-2 text-gray-600 hover:bg-gray-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={updateProjectMutation.isPending}
+              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {t('common.save')}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <ProjectNav projectId={pid} archived={!!project?.archived_at} />
 

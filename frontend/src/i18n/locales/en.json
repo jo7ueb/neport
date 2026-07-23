@@ -134,6 +134,8 @@
       "statusLabel": "Status",
       "childProgressLabel": "Child Ticket Progress",
       "assigneeLabel": "Assignee",
+      "actualDurationLabel": "Actual duration",
+      "actualDurationValue": "{{hours}}h {{minutes}}m",
       "dueDateLabel": "Due Date",
       "parentTicket": "Parent Ticket",
       "parentTicketLabel": "Parent Ticket (clear to make root)",
@@ -180,6 +182,8 @@
     "updateFailed": "Failed to change role",
     "removeFailed": "Failed to remove member",
     "legacyOpenNotice": "This project has no members configured yet. Until it does, every user can view and edit it.",
+    "editProject": "Edit project info",
+    "editFailed": "Failed to update project info",
     "role": {
       "label": "Role",
       "manager": "Manager",
@@ -242,7 +246,9 @@
     "unassigned": "Not set",
     "empty": "No tasks yet",
     "indentAria": "Indent",
-    "outdentAria": "Outdent"
+    "outdentAria": "Outdent",
+    "milestoneFilterLabel": "Filter by milestone:",
+    "milestoneFilterAll": "All"
   },
   "adminHub": {
     "title": "Admin",

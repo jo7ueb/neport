@@ -12,12 +12,16 @@ interface UserPickerProps {
   // User ids to leave out of the results, e.g. users already picked in
   // other rows of the same form (so the same person can't be added twice).
   excludeIds?: number[]
+  // Restrict candidates to this list, filtered client-side as the user
+  // types, instead of searching every user in the system via the API - e.g.
+  // a ticket's assignee should only be pickable from the project's members.
+  candidates?: User[]
 }
 
 // Same search-as-you-type dropdown as TicketPicker, for forms where a plain
 // <select> with every user in the system is unusable (see ticketPicker.tsx
 // for the shared UX rationale).
-export function UserPicker({ value, onChange, placeholder, className, excludeIds }: UserPickerProps) {
+export function UserPicker({ value, onChange, placeholder, className, excludeIds, candidates }: UserPickerProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -27,10 +31,17 @@ export function UserPicker({ value, onChange, placeholder, className, excludeIds
   const { data: rawResults } = useQuery({
     queryKey: ['users', 'search', query],
     queryFn: () => searchUsers(query),
-    enabled: open,
+    enabled: open && candidates === undefined,
     staleTime: 30_000,
   })
-  const results = rawResults?.filter((u) => !excludeIds?.includes(u.id))
+  const matched = candidates
+    ? candidates.filter(
+        (u) =>
+          u.display_name.toLowerCase().includes(query.toLowerCase()) ||
+          u.email.toLowerCase().includes(query.toLowerCase())
+      )
+    : rawResults
+  const results = matched?.filter((u) => !excludeIds?.includes(u.id))
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
