@@ -88,8 +88,7 @@
     "tickets": "チケット",
     "kanban": "かんばん",
     "milestones": "マイルストーン",
-    "gantt": "ガント",
-    "wbs": "WBS",
+    "wbs": "WBS / ガント",
     "members": "メンバー",
     "archivedBanner": "このプロジェクトはアーカイブされています。閲覧のみ可能で、編集・作成はできません。"
   },
@@ -223,9 +222,6 @@
     "noTickets": "このマイルストーンに紐づくチケットがありません"
   },
   "gantt": {
-    "title": "ガントチャート",
-    "titleWithProject": "{{project}} のガントチャート",
-    "backToProjects": "プロジェクト一覧に戻る",
     "empty": "表示できるチケットがありません",
     "openTicket": "チケットを開く →",
     "updateFailed": "チケットの日程更新に失敗しました"
@@ -239,15 +235,9 @@
       "title": "タイトル",
       "status": "ステータス",
       "progress": "進捗",
-      "assignee": "担当者",
-      "startDate": "開始日",
-      "endDate": "終了日",
-      "dueDate": "締切日",
-      "actions": "操作"
+      "assignee": "担当者"
     },
     "addRootTask": "+ ルートタスク追加",
-    "newTaskPlaceholder": "新規タスクのタイトル",
-    "childTaskPlaceholder": "子タスクのタイトル",
     "addChildTask": "+ 子タスク追加",
     "unassigned": "未設定",
     "empty": "タスクはまだありません",

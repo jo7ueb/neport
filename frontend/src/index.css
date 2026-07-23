@@ -1,3 +1,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* frappe-gantt has no built-in weekend shading - injected manually, see
+   applyWeekendHighlights() in WbsGanttPanel.tsx. Kept subtler than the
+   library's own .today-highlight (fill: light-yellow; opacity: 0.5). */
+.weekend-highlight {
+  fill: #64748b;
+  opacity: 0.12;
+}

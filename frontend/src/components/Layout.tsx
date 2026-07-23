@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
@@ -10,6 +10,11 @@ export function Layout() {
   const { user, logout } = useAuth()
   const { maintenanceMode } = useSettings()
   const navigate = useNavigate()
+  const location = useLocation()
+  // The WBS/Gantt split view needs every pixel of width it can get (long
+  // ticket titles alongside a horizontally-scrolling chart) - the standard
+  // max-w-5xl reading-width constraint just wastes a wide monitor there.
+  const isWideLayout = /^\/projects\/[^/]+\/wbs$/.test(location.pathname)
 
   async function handleLogout() {
     await logout()
@@ -71,7 +76,7 @@ export function Layout() {
           {t('layout.maintenanceBanner')}
         </div>
       )}
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+      <main className={`mx-auto w-full flex-1 py-6 ${isWideLayout ? 'max-w-none px-3' : 'max-w-5xl px-4'}`}>
         <Outlet />
       </main>
       <footer className="bg-blue-700">

@@ -10,7 +10,6 @@ import { TicketEditPage } from './pages/TicketEditPage'
 import { KanbanPage } from './pages/KanbanPage'
 import { MilestonesPage } from './pages/MilestonesPage'
 import { MilestoneBurndownPage } from './pages/MilestoneBurndownPage'
-import { GanttPage } from './pages/GanttPage'
 import { WbsPage } from './pages/WbsPage'
 import { ProjectMembersPage } from './pages/ProjectMembersPage'
 import { AdminHubPage } from './pages/AdminHubPage'
@@ -44,7 +43,6 @@ export function App() {
           <Route path="/projects/:projectId/kanban" element={<KanbanPage />} />
           <Route path="/projects/:projectId/milestones" element={<MilestonesPage />} />
           <Route path="/projects/:projectId/milestones/:milestoneId/burndown" element={<MilestoneBurndownPage />} />
-          <Route path="/projects/:projectId/gantt" element={<GanttPage />} />
           <Route path="/projects/:projectId/wbs" element={<WbsPage />} />
           <Route path="/projects/:projectId/members" element={<ProjectMembersPage />} />
           <Route path="/admin" element={<AdminHubPage />} />

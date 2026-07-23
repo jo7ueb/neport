@@ -3,9 +3,10 @@ import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { getProject, getProjectWorkflow } from '../api/projects'
 import { getTicketTree } from '../api/tickets'
+import { getGanttData } from '../api/gantt'
 import { listAllUsers } from '../api/users'
 import { ProjectNav } from '../components/ProjectNav'
-import { WbsTable } from '../components/WbsTable'
+import { WbsGanttPanel } from '../components/WbsGanttPanel'
 
 export function WbsPage() {
   const { t } = useTranslation()
@@ -17,6 +18,7 @@ export function WbsPage() {
     queryKey: ['project', pid, 'tickets', 'tree'],
     queryFn: () => getTicketTree(pid),
   })
+  const { data: gantt } = useQuery({ queryKey: ['gantt', pid], queryFn: () => getGanttData(pid) })
   const { data: users } = useQuery({ queryKey: ['users', 'all'], queryFn: listAllUsers })
   const { data: workflow } = useQuery({
     queryKey: ['project', pid, 'workflow'],
@@ -39,7 +41,13 @@ export function WbsPage() {
       {isLoading ? (
         <p className="text-gray-500">{t('common.loading')}</p>
       ) : (
-        <WbsTable projectId={pid} nodes={tree ?? []} users={users ?? []} workflow={workflow} />
+        <WbsGanttPanel
+          projectId={pid}
+          nodes={tree ?? []}
+          dependencies={gantt?.dependencies ?? []}
+          users={users ?? []}
+          workflow={workflow}
+        />
       )}
     </div>
   )

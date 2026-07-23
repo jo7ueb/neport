@@ -18,9 +18,6 @@ export function ProjectNav({ projectId, archived }: { projectId: number; archive
         <NavLink to={`/projects/${projectId}/milestones`} className={linkClass}>
           {t('projectNav.milestones')}
         </NavLink>
-        <NavLink to={`/projects/${projectId}/gantt`} className={linkClass}>
-          {t('projectNav.gantt')}
-        </NavLink>
         <NavLink to={`/projects/${projectId}/wbs`} className={linkClass}>
           {t('projectNav.wbs')}
         </NavLink>

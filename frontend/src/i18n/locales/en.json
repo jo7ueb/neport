@@ -88,8 +88,7 @@
     "tickets": "Tickets",
     "kanban": "Kanban",
     "milestones": "Milestones",
-    "gantt": "Gantt",
-    "wbs": "WBS",
+    "wbs": "WBS / Gantt",
     "members": "Members",
     "archivedBanner": "This project is archived. It is read-only - no edits or new items are allowed."
   },
@@ -223,9 +222,6 @@
     "noTickets": "No tickets are linked to this milestone"
   },
   "gantt": {
-    "title": "Gantt Chart",
-    "titleWithProject": "{{project}} Gantt Chart",
-    "backToProjects": "Back to project list",
     "empty": "No tickets to display",
     "openTicket": "Open ticket →",
     "updateFailed": "Failed to update ticket dates"
@@ -239,15 +235,9 @@
       "title": "Title",
       "status": "Status",
       "progress": "Progress",
-      "assignee": "Assignee",
-      "startDate": "Start Date",
-      "endDate": "End Date",
-      "dueDate": "Due Date",
-      "actions": "Actions"
+      "assignee": "Assignee"
     },
     "addRootTask": "+ Add root task",
-    "newTaskPlaceholder": "New task title",
-    "childTaskPlaceholder": "Child task title",
     "addChildTask": "+ Add child task",
     "unassigned": "Not set",
     "empty": "No tasks yet",
