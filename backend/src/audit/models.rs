@@ -6,7 +6,11 @@ use serde::Serialize;
 // user always shows their current display name here.
 #[derive(Debug, Clone, Serialize)]
 pub struct AuditLogEntry {
-    pub id: i64,
+    // Source-prefixed (e.g. "audit-123", "ticket_activity-456") since this
+    // merges rows from several tables (see repo::ENTRIES_SQL) that each have
+    // their own independent id sequence - a plain integer wouldn't be unique
+    // across sources.
+    pub id: String,
     pub actor_id: i64,
     pub actor_name: String,
     pub action: String,

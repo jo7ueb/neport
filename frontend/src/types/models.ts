@@ -159,9 +159,35 @@ export type AuditAction =
   | 'workflow_status_created'
   | 'workflow_status_updated'
   | 'workflow_transition_created'
+  | 'work_session_edited'
+  // Sourced at read time from tables other than audit_log itself (see
+  // backend/src/audit/repo.rs's ENTRIES_SQL) so the admin audit screen shows
+  // every user action, not just the ones explicitly written to audit_log.
+  | 'ticket_created'
+  | 'ticket_status_change'
+  | 'ticket_assignee_change'
+  | 'ticket_title_changed'
+  | 'ticket_description_changed'
+  | 'ticket_due_date_changed'
+  | 'ticket_start_date_changed'
+  | 'ticket_end_date_changed'
+  | 'ticket_milestone_changed'
+  | 'ticket_parent_changed'
+  | 'ticket_field_changed'
+  | 'ticket_commented'
+  | 'dependency_added'
+  | 'dependency_removed'
+  | 'report_approved'
+  | 'report_rejected'
+  | 'month_closed'
+  | 'month_reopened'
+  | 'work_session_started'
+  | 'work_session_ended'
+  | 'attachment_uploaded'
+  | 'approver_assigned'
 
 export interface AuditLogEntry {
-  id: number
+  id: string
   actor_id: number
   actor_name: string
   action: AuditAction
