@@ -23,6 +23,7 @@ const MESSAGE_KEYS = {
   report_rejected: 'notifications.reportRejected',
   ticket_mentioned: 'notifications.ticketMentioned',
   report_mentioned: 'notifications.reportMentioned',
+  ticket_confirmation_requested: 'notifications.ticketConfirmationRequested',
 } as const satisfies Record<NotificationType, string>
 
 function NotificationMessage({ n }: { n: Notification }) {

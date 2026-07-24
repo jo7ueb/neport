@@ -49,6 +49,13 @@ pub async fn create_user(
     })
 }
 
+pub async fn list_admin_ids(db: &sqlx::PgPool) -> Result<Vec<i64>> {
+    let rows: Vec<(i64,)> = sqlx::query_as("SELECT id FROM users WHERE role = 'admin' AND status = 'active'")
+        .fetch_all(db)
+        .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
 pub async fn count_users(db: &sqlx::PgPool) -> Result<i64> {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
         .fetch_one(db)

@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { getTicket, updateTicket } from '../api/tickets'
 import { useAssignableUsers } from '../lib/useAssignableUsers'
+import { useProjectRole } from '../lib/useProjectRole'
 import { listMilestones } from '../api/milestones'
 import { getProjectWorkflow } from '../api/projects'
 import { MarkdownField } from '../components/MarkdownField'
@@ -26,6 +27,7 @@ export function TicketEditPage() {
   })
 
   const users = useAssignableUsers(ticket?.project_id)
+  const { canManage } = useProjectRole(ticket?.project_id)
   const { data: milestones } = useQuery({
     queryKey: ['milestones', ticket?.project_id],
     queryFn: () => listMilestones(ticket!.project_id),
@@ -114,9 +116,16 @@ export function TicketEditPage() {
       .filter((tr) => tr.from_status_id === ticket.status.id)
       .map((tr) => tr.to_status_id)
   )
+  // Moving into a "confirmed"-category status (closing a done ticket after
+  // review) is a project manager's call - offering it to anyone else would
+  // just bounce back as a 403 from the backend (see access::Access::Manage).
+  // The ticket's current status always stays in the list even if it's
+  // already confirmed and the viewer isn't a manager, so the dropdown still
+  // has a value to show.
   const statusOptions: WorkflowStatus[] =
-    workflow?.statuses.filter((s) => s.id === ticket.status.id || reachableStatusIds.has(s.id)) ??
-    [ticket.status]
+    workflow?.statuses.filter(
+      (s) => s.id === ticket.status.id || (reachableStatusIds.has(s.id) && (s.category !== 'confirmed' || canManage))
+    ) ?? [ticket.status]
 
   return (
     <div>

@@ -17,7 +17,7 @@ import { Modal } from '../components/Modal'
 import { getErrorMessage } from '../i18n/apiErrors'
 import type { StatusCategory, WorkflowStatus } from '../types/models'
 
-const CATEGORY_OPTIONS: StatusCategory[] = ['todo', 'in_progress', 'done']
+const CATEGORY_OPTIONS: StatusCategory[] = ['todo', 'in_progress', 'done', 'confirmed']
 
 export function AdminWorkflowDetailPage() {
   const { t } = useTranslation()

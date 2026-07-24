@@ -485,10 +485,11 @@
     "ticketAssigned": "{{actor}} assigned ticket #{{id}} {{title}} to you",
     "ticketOverdue": "Ticket #{{id}} {{title}} is overdue",
     "ticketCommented": "{{actor}} commented on ticket #{{id}} {{title}}",
-    "reportApproved": "Your report for {{date}} was approved",
-    "reportRejected": "Your report for {{date}} was rejected",
+    "reportApproved": "{{actor}} approved your report for {{date}}",
+    "reportRejected": "{{actor}} rejected your report for {{date}}",
     "ticketMentioned": "{{actor}} mentioned you in ticket #{{id}} {{title}}",
-    "reportMentioned": "{{actor}} mentioned you in their report for {{date}}"
+    "reportMentioned": "{{actor}} mentioned you in their report for {{date}}",
+    "ticketConfirmationRequested": "{{actor}} marked ticket #{{id}} {{title}} as done - please confirm"
   },
   "approvals": {
     "title": "Approvals",
@@ -614,7 +615,8 @@
     "category": {
       "todo": "To do",
       "in_progress": "In progress",
-      "done": "Done"
+      "done": "Done (unconfirmed)",
+      "confirmed": "Confirmed"
     },
     "transitions": "Transitions",
     "noTransitions": "No transitions defined",

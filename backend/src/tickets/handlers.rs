@@ -168,6 +168,19 @@ pub async fn update_ticket(
     let before = repo::get_ticket(&state.db, id).await?.ok_or(AppError::NotFound)?;
     access::check_project_access(&state.db, &user, before.project_id, Access::Write).await?;
 
+    // Moving a ticket into a "confirmed"-category status (closing it after
+    // review) is a project manager's call, not the assignee's - "done" just
+    // means whoever did the work says it's finished; "confirmed" means a
+    // manager verified that. Any other status change only needs Write.
+    if let Some(new_status_id) = payload.get("status_id").and_then(|v| v.as_i64()) {
+        if new_status_id != before.status.id {
+            let new_category = crate::workflows::repo::get_status_category(&state.db, new_status_id).await?;
+            if new_category == StatusCategory::Confirmed {
+                access::check_project_access(&state.db, &user, before.project_id, Access::Manage).await?;
+            }
+        }
+    }
+
     if let Some(parent_val) = payload.get("parent_ticket_id") {
         if let Some(new_parent_id) = parent_val.as_i64() {
             if new_parent_id == id {
@@ -231,6 +244,14 @@ async fn record_update_activity(
 ) -> Result<()> {
     if before.status.id != after.status.id {
         activity_log::repo::record_status_change(&state.db, ticket_id, user_id, before.status.id, after.status.id).await?;
+
+        // Just reached "done" (completed, but not yet confirmed) - ask a
+        // project manager to review and confirm/close it. Not fired when the
+        // transition lands directly on "confirmed" (nothing to request) or
+        // when the ticket was already done/confirmed before this update.
+        if after.status.category == StatusCategory::Done && before.status.category != StatusCategory::Done {
+            crate::notifications::repo::notify_confirmation_requested(&state.db, after.project_id, user_id, ticket_id).await?;
+        }
     }
 
     if before.assignee_id != after.assignee_id {

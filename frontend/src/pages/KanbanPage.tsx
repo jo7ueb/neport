@@ -8,6 +8,7 @@ import { listMilestones } from '../api/milestones'
 import { listAllProjectTickets, updateTicket } from '../api/tickets'
 import { ProjectNav } from '../components/ProjectNav'
 import { getErrorMessage } from '../i18n/apiErrors'
+import { useProjectRole } from '../lib/useProjectRole'
 import { statusLabel } from '../i18n/statusLabel'
 import type { Ticket, WorkflowDetail, WorkflowStatus } from '../types/models'
 
@@ -68,10 +69,19 @@ function KanbanColumnDropzone({
 
 // A status is a valid drop target for a ticket currently on `fromStatusId`
 // if it's the same column (no-op) or the workflow declares a transition
-// between them.
-function isReachable(workflow: WorkflowDetail | undefined, fromStatusId: number, toStatusId: number): boolean {
-  if (fromStatusId === toStatusId) return true
-  return !!workflow?.transitions.some((tr) => tr.from_status_id === fromStatusId && tr.to_status_id === toStatusId)
+// between them. Dropping onto a "confirmed"-category column (closing a done
+// ticket after review) additionally requires project-manager access - the
+// backend enforces the same rule, this just avoids a drag that's guaranteed
+// to bounce back as a 403.
+function isReachable(
+  workflow: WorkflowDetail | undefined,
+  fromStatusId: number,
+  toStatus: WorkflowStatus,
+  canManage: boolean
+): boolean {
+  if (fromStatusId === toStatus.id) return true
+  if (toStatus.category === 'confirmed' && !canManage) return false
+  return !!workflow?.transitions.some((tr) => tr.from_status_id === fromStatusId && tr.to_status_id === toStatus.id)
 }
 
 export function KanbanPage() {
@@ -87,6 +97,7 @@ export function KanbanPage() {
   })
   const { data: tickets } = useQuery({ queryKey: ['tickets', pid, 'all'], queryFn: () => listAllProjectTickets(pid) })
   const { data: milestones } = useQuery({ queryKey: ['milestones', pid], queryFn: () => listMilestones(pid) })
+  const { canManage } = useProjectRole(pid)
 
   const [milestoneFilter, setMilestoneFilter] = useState<number | 'all' | 'none'>('all')
   const [error, setError] = useState<string | null>(null)
@@ -146,7 +157,8 @@ export function KanbanPage() {
     const ticketId = Number(active.id)
     const statusId = Number(over.id)
     const fromTicket = tickets?.find((tkt) => tkt.id === ticketId)
-    if (fromTicket && !isReachable(workflow, fromTicket.status.id, statusId)) {
+    const toStatus = statuses.find((s) => s.id === statusId)
+    if (fromTicket && toStatus && !isReachable(workflow, fromTicket.status.id, toStatus, canManage)) {
       setError(t('kanban.invalidTransition'))
       return
     }
@@ -173,7 +185,7 @@ export function KanbanPage() {
         </Link>
       </div>
 
-      <ProjectNav projectId={pid} archived={!!project?.archived_at} />
+      <ProjectNav project={project} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3 rounded border bg-white p-3 text-sm">
         <label className="flex items-center gap-1">
@@ -206,7 +218,7 @@ export function KanbanPage() {
               key={status.id}
               status={status}
               tickets={visibleTickets.filter((t) => t.status.id === status.id)}
-              invalidTarget={!!draggingTicket && !isReachable(workflow, draggingTicket.status.id, status.id)}
+              invalidTarget={!!draggingTicket && !isReachable(workflow, draggingTicket.status.id, status, canManage)}
             />
           ))}
           {statuses.length === 0 && (

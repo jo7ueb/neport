@@ -20,7 +20,9 @@ function MilestoneProgress({ milestone, tickets }: { milestone: Milestone; ticke
   const { t } = useTranslation()
   const ticketsForMilestone = tickets.filter((tkt) => tkt.milestone_id === milestone.id)
   const total = ticketsForMilestone.length
-  const done = ticketsForMilestone.filter((tkt) => tkt.status.category === 'done').length
+  const done = ticketsForMilestone.filter(
+    (tkt) => tkt.status.category === 'done' || tkt.status.category === 'confirmed'
+  ).length
   const percent = total === 0 ? 0 : Math.round((done / total) * 100)
 
   let dueText: { key: 'milestone.dueToday' | 'milestone.daysRemaining' | 'milestone.overdueDays'; days: number } | null = null
@@ -218,7 +220,7 @@ export function MilestonesPage() {
         </div>
       </div>
 
-      <ProjectNav projectId={pid} archived={!!project?.archived_at} />
+      <ProjectNav project={project} />
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title={t('milestone.title')}>
         <form onSubmit={handleSubmit} className="space-y-3 text-sm">

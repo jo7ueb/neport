@@ -8,7 +8,16 @@ use std::str::FromStr;
 pub enum StatusCategory {
     Todo,
     InProgress,
+    // The assignee marked the ticket complete, but a project manager hasn't
+    // reviewed it yet - see StatusCategory::Confirmed.
     Done,
+    // A project manager reviewed a "done" ticket and closed it. Distinct
+    // from Done because completion, as claimed by whoever did the work, and
+    // confirmation, as verified by whoever manages the project, are not the
+    // same event - only Confirmed counts as "really finished" for Gantt
+    // progress and only a project manager (or site admin) may transition a
+    // ticket into a Confirmed-category status (see access::Access::Manage).
+    Confirmed,
 }
 
 impl FromStr for StatusCategory {
@@ -19,6 +28,7 @@ impl FromStr for StatusCategory {
             "todo" => Ok(StatusCategory::Todo),
             "in_progress" => Ok(StatusCategory::InProgress),
             "done" => Ok(StatusCategory::Done),
+            "confirmed" => Ok(StatusCategory::Confirmed),
             _ => Err(format!("invalid status category: {}", s)),
         }
     }
@@ -30,6 +40,7 @@ impl fmt::Display for StatusCategory {
             StatusCategory::Todo => "todo",
             StatusCategory::InProgress => "in_progress",
             StatusCategory::Done => "done",
+            StatusCategory::Confirmed => "confirmed",
         };
         write!(f, "{}", s)
     }

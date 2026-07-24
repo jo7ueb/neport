@@ -9,7 +9,7 @@ import type { Ticket, WorkflowStatus } from '../types/models'
 
 function isOverdue(dueDate: string | null, status: WorkflowStatus): boolean {
   if (!dueDate) return false
-  if (status.category === 'done') return false
+  if (status.category === 'done' || status.category === 'confirmed') return false
   return dueDate < new Date().toISOString().slice(0, 10)
 }
 

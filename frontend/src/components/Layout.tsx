@@ -80,9 +80,9 @@ export function Layout() {
         <Outlet />
       </main>
       <footer className="bg-blue-700">
-        <div className="mx-auto max-w-5xl px-4 py-3 text-center text-blue-100">
-          <div className="text-base italic text-blue-200">{t('footer.slogan')}</div>
-          <div className="mt-0.5 text-xs">
+        <div className="mx-auto max-w-5xl px-4 py-3 text-center">
+          <div className="text-base italic font-medium text-blue-50">{t('footer.slogan')}</div>
+          <div className="mt-0.5 text-xs text-gray-400">
             {t('footer.version', { version: import.meta.env.VITE_GIT_COMMIT || 'dev' })}
             {import.meta.env.VITE_GIT_DIRTY === '1' && (
               <span className="ml-1 font-semibold text-amber-300">{t('footer.dirty')}</span>

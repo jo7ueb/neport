@@ -81,6 +81,25 @@ pub async fn notify_mentioned_in_report(db: &PgPool, recipient_id: i64, actor_id
     create(db, recipient_id, NotificationType::ReportMentioned, Some(actor_id), None, Some(date)).await
 }
 
+// A ticket reached a "done" (not yet confirmed) status - notify whoever can
+// actually confirm/close it. Prefers the project's managers; a project with
+// no explicit manager (legacy, or simply nobody assigned yet) falls back to
+// site admins, mirroring access::Access::Manage's own fallback so "who gets
+// notified" always matches "who is actually allowed to confirm".
+pub async fn notify_confirmation_requested(db: &PgPool, project_id: i64, actor_id: i64, ticket_id: i64) -> Result<()> {
+    let mut recipients = crate::project_members::repo::list_manager_user_ids(db, project_id).await?;
+    if recipients.is_empty() {
+        recipients = crate::users::repo::list_admin_ids(db).await?;
+    }
+    for recipient_id in recipients {
+        if recipient_id == actor_id {
+            continue;
+        }
+        create(db, recipient_id, NotificationType::TicketConfirmationRequested, Some(actor_id), Some(ticket_id), None).await?;
+    }
+    Ok(())
+}
+
 // Run from a periodic background job (see main.rs). Inserts one
 // ticket_overdue notification per ticket the first time it's found overdue -
 // the partial unique index notifications_ticket_overdue_once keeps this
@@ -96,7 +115,7 @@ pub async fn notify_overdue_tickets(db: &PgPool) -> Result<u64> {
            AND t.assignee_id IS NOT NULL
            AND t.due_date IS NOT NULL
            AND t.due_date < CURRENT_DATE
-           AND ws.category != 'done'
+           AND ws.category NOT IN ('done', 'confirmed')
          ON CONFLICT DO NOTHING"
     )
     .bind(NotificationType::TicketOverdue.as_str())

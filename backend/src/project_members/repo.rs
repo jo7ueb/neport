@@ -55,6 +55,16 @@ pub async fn get_role(db: &PgPool, project_id: i64, user_id: i64) -> Result<Opti
     Ok(row.map(|(r,)| r.parse().unwrap_or(ProjectRole::Viewer)))
 }
 
+pub async fn list_manager_user_ids(db: &PgPool, project_id: i64) -> Result<Vec<i64>> {
+    let rows: Vec<(i64,)> =
+        sqlx::query_as("SELECT user_id FROM project_members WHERE project_id = $1 AND role = 'manager'")
+            .bind(project_id)
+            .fetch_all(db)
+            .await
+            .map_err(AppError::Database)?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
 pub async fn count_managers(db: &PgPool, project_id: i64) -> Result<i64> {
     let (count,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM project_members WHERE project_id = $1 AND role = 'manager'",

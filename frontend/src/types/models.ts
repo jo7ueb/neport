@@ -52,7 +52,7 @@ export interface ProjectMember {
   created_at: string
 }
 
-export type StatusCategory = 'todo' | 'in_progress' | 'done'
+export type StatusCategory = 'todo' | 'in_progress' | 'done' | 'confirmed'
 
 export interface WorkflowStatus {
   id: number
@@ -111,6 +111,7 @@ export type NotificationType =
   | 'report_rejected'
   | 'ticket_mentioned'
   | 'report_mentioned'
+  | 'ticket_confirmation_requested'
 
 export interface Notification {
   id: number

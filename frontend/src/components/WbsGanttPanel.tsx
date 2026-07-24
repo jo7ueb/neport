@@ -94,7 +94,17 @@ function toTasks(rows: FlatRow[], dependencies: TicketDependency[]): GanttTask[]
       name: `#${ticket.id} ${ticket.title}`,
       start,
       end,
-      progress: ticket.status.category === 'done' ? 100 : ticket.status.category === 'in_progress' ? 50 : 0,
+      // "done" only means the assignee claims it's finished - a project
+      // manager hasn't reviewed it yet, so it shows as nearly-but-not-quite
+      // complete. Only "confirmed" (closed after review) reaches 100%.
+      progress:
+        ticket.status.category === 'confirmed'
+          ? 100
+          : ticket.status.category === 'done'
+            ? 90
+            : ticket.status.category === 'in_progress'
+              ? 50
+              : 0,
       dependencies: predecessors.map(String).join(','),
     }
   })

@@ -485,10 +485,11 @@
     "ticketAssigned": "{{actor}}さんがチケット #{{id}} {{title}} をあなたに割り当てました",
     "ticketOverdue": "チケット #{{id}} {{title}} の期限が過ぎています",
     "ticketCommented": "{{actor}}さんがチケット #{{id}} {{title}} にコメントしました",
-    "reportApproved": "{{date}}の日報が承認されました",
-    "reportRejected": "{{date}}の日報が却下されました",
+    "reportApproved": "{{actor}}さんが{{date}}の日報を承認しました",
+    "reportRejected": "{{actor}}さんが{{date}}の日報を却下しました",
     "ticketMentioned": "{{actor}}さんがチケット #{{id}} {{title}} であなたをメンションしました",
-    "reportMentioned": "{{actor}}さんが{{date}}の日報であなたをメンションしました"
+    "reportMentioned": "{{actor}}さんが{{date}}の日報であなたをメンションしました",
+    "ticketConfirmationRequested": "{{actor}}さんがチケット #{{id}} {{title}} を完了しました。確認をお願いします"
   },
   "approvals": {
     "title": "承認",
@@ -614,7 +615,8 @@
     "category": {
       "todo": "未着手系",
       "in_progress": "進行中系",
-      "done": "完了系"
+      "done": "完了系(未確認)",
+      "confirmed": "確認済み系"
     },
     "transitions": "状態遷移",
     "noTransitions": "遷移が定義されていません",

@@ -15,7 +15,7 @@ import type { WorkflowStatus } from '../types/models'
 
 function isOverdue(dueDate: string | null, status: WorkflowStatus): boolean {
   if (!dueDate) return false
-  if (status.category === 'done') return false
+  if (status.category === 'done' || status.category === 'confirmed') return false
   const today = new Date().toISOString().slice(0, 10)
   return dueDate < today
 }
@@ -106,7 +106,7 @@ export function TicketListPage() {
         </div>
       </div>
 
-      <ProjectNav projectId={pid} archived={!!project?.archived_at} />
+      <ProjectNav project={project} />
 
       <TicketCreateModal
         open={showCreate}

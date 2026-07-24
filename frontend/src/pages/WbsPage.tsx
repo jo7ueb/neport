@@ -57,7 +57,7 @@ export function WbsPage() {
         </Link>
       </div>
 
-      <ProjectNav projectId={pid} archived={!!project?.archived_at} />
+      <ProjectNav project={project} />
 
       {milestones && milestones.length > 0 && (
         <div className="mb-4 flex items-center gap-2 text-sm">

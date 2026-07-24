@@ -32,7 +32,7 @@ export function MilestoneBurndownPage() {
         </Link>
       </div>
 
-      <ProjectNav projectId={pid} archived={!!project?.archived_at} />
+      <ProjectNav project={project} />
 
       {isLoading ? (
         <p className="text-gray-500">{t('common.loading')}</p>

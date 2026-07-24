@@ -10,6 +10,7 @@ pub enum NotificationType {
     ReportRejected,
     TicketMentioned,
     ReportMentioned,
+    TicketConfirmationRequested,
 }
 
 impl NotificationType {
@@ -22,6 +23,7 @@ impl NotificationType {
             NotificationType::ReportRejected => "report_rejected",
             NotificationType::TicketMentioned => "ticket_mentioned",
             NotificationType::ReportMentioned => "report_mentioned",
+            NotificationType::TicketConfirmationRequested => "ticket_confirmation_requested",
         }
     }
 }

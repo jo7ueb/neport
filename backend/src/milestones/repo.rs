@@ -202,7 +202,7 @@ pub async fn burndown_data(db: &PgPool, milestone_id: i64) -> Result<Option<Burn
             }
 
             let category = category_map.get(&status_id).map(String::as_str).unwrap_or("todo");
-            if category != "done" {
+            if category != "done" && category != "confirmed" {
                 remaining += 1;
             }
         }

@@ -308,6 +308,15 @@ pub async fn get_default_workflow_id(db: &PgPool) -> Result<i64> {
     Ok(id)
 }
 
+pub async fn get_status_category(db: &PgPool, status_id: i64) -> Result<StatusCategory> {
+    let (category_str,): (String,) = sqlx::query_as("SELECT category FROM workflow_statuses WHERE id = $1")
+        .bind(status_id)
+        .fetch_one(db)
+        .await
+        .map_err(AppError::Database)?;
+    category_str.parse().map_err(AppError::BadRequest)
+}
+
 pub async fn is_transition_allowed(db: &PgPool, workflow_id: i64, from_status_id: i64, to_status_id: i64) -> Result<bool> {
     let (exists,): (bool,) = sqlx::query_as(
         "SELECT EXISTS (SELECT 1 FROM workflow_transitions WHERE workflow_id = $1 AND from_status_id = $2 AND to_status_id = $3)"

@@ -55,7 +55,7 @@ pub(crate) const TICKET_SELECT_COLUMNS: &str = "t.id, t.project_id, t.parent_tic
         SELECT id, ARRAY[t.id, id] AS path FROM tickets WHERE parent_ticket_id = t.id AND deleted_at IS NULL \
         UNION ALL \
         SELECT c.id, d.path || c.id FROM tickets c JOIN descendants d ON c.parent_ticket_id = d.id WHERE c.deleted_at IS NULL AND NOT (c.id = ANY(d.path)) \
-     ) SELECT COUNT(*) FROM descendants dd JOIN tickets dt ON dt.id = dd.id JOIN workflow_statuses dws ON dt.status_id = dws.id WHERE dws.category = 'done') AS child_done_ticket_count";
+     ) SELECT COUNT(*) FROM descendants dd JOIN tickets dt ON dt.id = dd.id JOIN workflow_statuses dws ON dt.status_id = dws.id WHERE dws.category IN ('done', 'confirmed')) AS child_done_ticket_count";
 // The "AND t.deleted_at IS NULL" lives in the JOIN condition (not a WHERE
 // clause) so this composes with every caller below, which all append their
 // own "WHERE ..." after this constant.
@@ -162,7 +162,7 @@ pub async fn list_tickets_for_project(
 ) -> Result<Vec<Ticket>> {
     let category_str = filter.category.map(|c| c.to_string());
     let sql = format!(
-        "SELECT {TICKET_SELECT_COLUMNS} {TICKET_FROM_JOIN} WHERE t.project_id = $1 AND ($2::bigint IS NULL OR t.assignee_id = $2) AND ($3::bigint IS NULL OR t.status_id = $3) AND ($4::text IS NULL OR ws.category = $4) AND ($5::bool IS FALSE OR (t.due_date < CURRENT_DATE AND ws.category != 'done')) ORDER BY t.created_at DESC LIMIT $6 OFFSET $7"
+        "SELECT {TICKET_SELECT_COLUMNS} {TICKET_FROM_JOIN} WHERE t.project_id = $1 AND ($2::bigint IS NULL OR t.assignee_id = $2) AND ($3::bigint IS NULL OR t.status_id = $3) AND ($4::text IS NULL OR ws.category = $4) AND ($5::bool IS FALSE OR (t.due_date < CURRENT_DATE AND ws.category NOT IN ('done', 'confirmed'))) ORDER BY t.created_at DESC LIMIT $6 OFFSET $7"
     );
     sqlx::query_as::<_, TicketRow>(&sql)
         .bind(project_id)
@@ -181,7 +181,7 @@ pub async fn list_tickets_for_project(
 pub async fn count_tickets_for_project(db: &PgPool, project_id: i64, filter: &TicketFilter) -> Result<i64> {
     let category_str = filter.category.map(|c| c.to_string());
     let sql = format!(
-        "SELECT COUNT(*) {TICKET_FROM_JOIN} WHERE t.project_id = $1 AND ($2::bigint IS NULL OR t.assignee_id = $2) AND ($3::bigint IS NULL OR t.status_id = $3) AND ($4::text IS NULL OR ws.category = $4) AND ($5::bool IS FALSE OR (t.due_date < CURRENT_DATE AND ws.category != 'done'))"
+        "SELECT COUNT(*) {TICKET_FROM_JOIN} WHERE t.project_id = $1 AND ($2::bigint IS NULL OR t.assignee_id = $2) AND ($3::bigint IS NULL OR t.status_id = $3) AND ($4::text IS NULL OR ws.category = $4) AND ($5::bool IS FALSE OR (t.due_date < CURRENT_DATE AND ws.category NOT IN ('done', 'confirmed')))"
     );
     let (count,): (i64,) = sqlx::query_as(&sql)
         .bind(project_id)
@@ -329,18 +329,22 @@ pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result
                 ));
             }
 
-            // A ticket can't move into a "done"-category status (done,
-            // closed, ...) while any ticket in its subtree - not just direct
-            // children - still isn't done itself. current.child_*_count
+            // A ticket can't move into a "done"- or "confirmed"-category
+            // status while any ticket in its subtree - not just direct
+            // children - isn't at least done itself. current.child_*_count
             // already counts the whole subtree recursively (see
-            // TICKET_SELECT_COLUMNS), so this is just comparing two counts.
+            // TICKET_SELECT_COLUMNS: child_done_ticket_count counts both
+            // done and confirmed descendants), so this is just comparing two
+            // counts.
             let (new_status_category,): (String,) =
                 sqlx::query_as("SELECT category FROM workflow_statuses WHERE id = $1")
                     .bind(new_status_id)
                     .fetch_one(db)
                     .await
                     .map_err(AppError::Database)?;
-            if new_status_category == "done" && current.child_done_ticket_count < current.child_ticket_count {
+            if (new_status_category == "done" || new_status_category == "confirmed")
+                && current.child_done_ticket_count < current.child_ticket_count
+            {
                 return Err(AppError::BadRequest(
                     "all child tickets must be done before this ticket can be closed".to_string(),
                 ));
