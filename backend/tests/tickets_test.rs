@@ -558,6 +558,35 @@ async fn overdue_filter_only_returns_open_tickets_past_due_date() {
 }
 
 #[tokio::test]
+async fn sort_param_controls_ordering_of_the_ticket_list() {
+    let user = TestUser::create().await;
+    let project = user.create_project(&unique("ticket-sort-project")).await;
+    let project_id = as_i64(&project, "id");
+
+    let earlier = user.create_ticket(project_id, None, "Created first").await;
+    let earlier_id = as_i64(&earlier, "id");
+    let later = user.create_ticket(project_id, None, "Created second").await;
+    let later_id = as_i64(&later, "id");
+
+    async fn ids_in_order(user: &TestUser, project_id: i64, sort: &str) -> Vec<i64> {
+        let resp = user
+            .client
+            .get(format!("{}/api/v1/projects/{}/tickets?sort={}", base_url(), project_id, sort))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let list: serde_json::Value = resp.json().await.unwrap();
+        list["items"].as_array().unwrap().iter().map(|t| t["id"].as_i64().unwrap()).collect()
+    }
+
+    // Default (no sort param) matches created_at_desc, the pre-existing
+    // fixed ORDER BY this endpoint always used before sorting was added.
+    assert_eq!(ids_in_order(&user, project_id, "created_at_desc").await, vec![later_id, earlier_id]);
+    assert_eq!(ids_in_order(&user, project_id, "created_at_asc").await, vec![earlier_id, later_id]);
+}
+
+#[tokio::test]
 async fn ticket_list_is_paginated() {
     let user = TestUser::create().await;
     let project = user.create_project(&unique("ticket-page-project")).await;

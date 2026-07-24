@@ -6,11 +6,20 @@ import { DndContext, useDraggable, useDroppable, type DragEndEvent, type DragSta
 import { getProject, getProjectWorkflow } from '../api/projects'
 import { listMilestones } from '../api/milestones'
 import { listAllProjectTickets, updateTicket } from '../api/tickets'
+import { listAllUsers } from '../api/users'
 import { ProjectNav } from '../components/ProjectNav'
 import { getErrorMessage } from '../i18n/apiErrors'
 import { useProjectRole } from '../lib/useProjectRole'
 import { statusLabel } from '../i18n/statusLabel'
 import type { Ticket, WorkflowDetail, WorkflowStatus } from '../types/models'
+
+// Mirrors TicketListPage's own isOverdue - a ticket in a done/confirmed
+// status is never "overdue" regardless of its due date.
+function isOverdue(dueDate: string | null, status: WorkflowStatus): boolean {
+  if (!dueDate) return false
+  if (status.category === 'done' || status.category === 'confirmed') return false
+  return dueDate < new Date().toISOString().slice(0, 10)
+}
 
 function TicketCard({ ticket }: { ticket: Ticket }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -97,9 +106,12 @@ export function KanbanPage() {
   })
   const { data: tickets } = useQuery({ queryKey: ['tickets', pid, 'all'], queryFn: () => listAllProjectTickets(pid) })
   const { data: milestones } = useQuery({ queryKey: ['milestones', pid], queryFn: () => listMilestones(pid) })
+  const { data: users } = useQuery({ queryKey: ['users', 'all'], queryFn: listAllUsers })
   const { canManage } = useProjectRole(pid)
 
   const [milestoneFilter, setMilestoneFilter] = useState<number | 'all' | 'none'>('all')
+  const [assigneeFilter, setAssigneeFilter] = useState<number | ''>('')
+  const [overdueOnly, setOverdueOnly] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [draggingTicket, setDraggingTicket] = useState<Ticket | null>(null)
 
@@ -169,9 +181,11 @@ export function KanbanPage() {
   const statuses = [...(workflow?.statuses ?? [])].sort((a, b) => a.position - b.position)
 
   const visibleTickets = (tickets ?? []).filter((ticket) => {
-    if (milestoneFilter === 'all') return true
-    if (milestoneFilter === 'none') return ticket.milestone_id === null
-    return ticket.milestone_id === milestoneFilter
+    if (milestoneFilter === 'none' && ticket.milestone_id !== null) return false
+    if (typeof milestoneFilter === 'number' && ticket.milestone_id !== milestoneFilter) return false
+    if (assigneeFilter !== '' && ticket.assignee_id !== assigneeFilter) return false
+    if (overdueOnly && !isOverdue(ticket.due_date, ticket.status)) return false
+    return true
   })
 
   return (
@@ -206,6 +220,27 @@ export function KanbanPage() {
             ))}
             <option value="none">{t('kanban.noMilestone')}</option>
           </select>
+        </label>
+
+        <label className="flex items-center gap-1">
+          <span className="text-gray-600">{t('ticket.list.assignee')}</span>
+          <select
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value ? Number(e.target.value) : '')}
+            className="rounded border border-gray-300 px-2 py-1"
+          >
+            <option value="">{t('ticket.list.all')}</option>
+            {users?.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.display_name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex items-center gap-1">
+          <input type="checkbox" checked={overdueOnly} onChange={(e) => setOverdueOnly(e.target.checked)} />
+          <span className="text-gray-600">{t('ticket.list.overdueOnly')}</span>
         </label>
       </div>
 

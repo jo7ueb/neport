@@ -51,6 +51,33 @@ pub struct TicketFilter {
     pub status_id: Option<i64>,
     pub category: Option<StatusCategory>,
     pub overdue: bool,
+    pub sort: TicketSort,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TicketSort {
+    #[default]
+    CreatedAtDesc,
+    CreatedAtAsc,
+    DueDateAsc,
+    UpdatedAtDesc,
+}
+
+impl TicketSort {
+    // Not user input - `TicketSort` is only ever reached via strict
+    // Deserialize from a fixed set of query-string variants (see
+    // ListTicketsQuery), so it's safe to interpolate this straight into the
+    // SQL string rather than bind it as a parameter (column/direction names
+    // can't be bound params anyway).
+    pub fn order_by_sql(self) -> &'static str {
+        match self {
+            TicketSort::CreatedAtDesc => "t.created_at DESC",
+            TicketSort::CreatedAtAsc => "t.created_at ASC",
+            TicketSort::DueDateAsc => "t.due_date ASC NULLS LAST",
+            TicketSort::UpdatedAtDesc => "t.updated_at DESC",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

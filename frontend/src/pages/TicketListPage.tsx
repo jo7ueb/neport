@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { getProject, getProjectWorkflow } from '../api/projects'
 import { listMilestones } from '../api/milestones'
-import { listProjectTickets } from '../api/tickets'
+import { listProjectTickets, type TicketSort } from '../api/tickets'
 import { listAllUsers } from '../api/users'
 import { ProjectNav } from '../components/ProjectNav'
 import { Pagination } from '../components/Pagination'
@@ -29,6 +29,7 @@ export function TicketListPage() {
   const [statusFilter, setStatusFilter] = useState<number | ''>('')
   const [assigneeFilter, setAssigneeFilter] = useState<number | ''>('')
   const [overdueOnly, setOverdueOnly] = useState(false)
+  const [sort, setSort] = useState<TicketSort>('created_at_desc')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
 
@@ -42,12 +43,13 @@ export function TicketListPage() {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['tickets', pid, statusFilter, assigneeFilter, overdueOnly, page, perPage],
+    queryKey: ['tickets', pid, statusFilter, assigneeFilter, overdueOnly, sort, page, perPage],
     queryFn: () =>
       listProjectTickets(pid, {
         status_id: statusFilter || undefined,
         assignee_id: assigneeFilter || undefined,
         overdue: overdueOnly || undefined,
+        sort,
         page,
         per_page: perPage,
       }),
@@ -66,6 +68,11 @@ export function TicketListPage() {
 
   function updateOverdueOnly(value: boolean) {
     setOverdueOnly(value)
+    setPage(1)
+  }
+
+  function updateSort(value: TicketSort) {
+    setSort(value)
     setPage(1)
   }
 
@@ -155,6 +162,20 @@ export function TicketListPage() {
             onChange={(e) => updateOverdueOnly(e.target.checked)}
           />
           <span className="text-gray-600">{t('ticket.list.overdueOnly')}</span>
+        </label>
+
+        <label className="flex items-center gap-1">
+          <span className="text-gray-600">{t('ticket.list.sort')}</span>
+          <select
+            value={sort}
+            onChange={(e) => updateSort(e.target.value as TicketSort)}
+            className="rounded border border-gray-300 px-2 py-1"
+          >
+            <option value="created_at_desc">{t('ticket.list.sortCreatedAtDesc')}</option>
+            <option value="created_at_asc">{t('ticket.list.sortCreatedAtAsc')}</option>
+            <option value="due_date_asc">{t('ticket.list.sortDueDateAsc')}</option>
+            <option value="updated_at_desc">{t('ticket.list.sortUpdatedAtDesc')}</option>
+          </select>
         </label>
       </div>
 

@@ -36,6 +36,7 @@ pub async fn get_gantt_data(db: &PgPool, project_id: i64) -> Result<GanttData> {
         status_id: None,
         category: None,
         overdue: false,
+        sort: Default::default(),
     };
     // The Gantt chart needs every ticket in the project to render correctly,
     // not a paginated page, so request the internal "fetch everything" ceiling.

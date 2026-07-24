@@ -161,8 +161,9 @@ pub async fn list_tickets_for_project(
     offset: i64,
 ) -> Result<Vec<Ticket>> {
     let category_str = filter.category.map(|c| c.to_string());
+    let order_by = filter.sort.order_by_sql();
     let sql = format!(
-        "SELECT {TICKET_SELECT_COLUMNS} {TICKET_FROM_JOIN} WHERE t.project_id = $1 AND ($2::bigint IS NULL OR t.assignee_id = $2) AND ($3::bigint IS NULL OR t.status_id = $3) AND ($4::text IS NULL OR ws.category = $4) AND ($5::bool IS FALSE OR (t.due_date < CURRENT_DATE AND ws.category NOT IN ('done', 'confirmed'))) ORDER BY t.created_at DESC LIMIT $6 OFFSET $7"
+        "SELECT {TICKET_SELECT_COLUMNS} {TICKET_FROM_JOIN} WHERE t.project_id = $1 AND ($2::bigint IS NULL OR t.assignee_id = $2) AND ($3::bigint IS NULL OR t.status_id = $3) AND ($4::text IS NULL OR ws.category = $4) AND ($5::bool IS FALSE OR (t.due_date < CURRENT_DATE AND ws.category NOT IN ('done', 'confirmed'))) ORDER BY {order_by} LIMIT $6 OFFSET $7"
     );
     sqlx::query_as::<_, TicketRow>(&sql)
         .bind(project_id)

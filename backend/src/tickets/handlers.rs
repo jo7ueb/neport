@@ -40,6 +40,7 @@ pub struct ListTicketsQuery {
     pub status_id: Option<i64>,
     pub category: Option<StatusCategory>,
     pub overdue: Option<bool>,
+    pub sort: Option<super::models::TicketSort>,
     pub page: Option<i64>,
     pub per_page: Option<i64>,
 }
@@ -96,6 +97,7 @@ pub async fn list_tickets(
         status_id: query.status_id,
         category: query.category,
         overdue: query.overdue.unwrap_or(false),
+        sort: query.sort.unwrap_or_default(),
     };
     let tickets = repo::list_tickets_for_project(&state.db, project_id, &filter, page.limit(), page.offset()).await?;
     let total = repo::count_tickets_for_project(&state.db, project_id, &filter).await?;

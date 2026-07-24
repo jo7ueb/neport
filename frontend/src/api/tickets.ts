@@ -14,11 +14,14 @@ import type {
 // list (kanban board, dashboard aggregation) rather than a paginated UI page.
 const FETCH_ALL_PER_PAGE = 500
 
+export type TicketSort = 'created_at_desc' | 'created_at_asc' | 'due_date_asc' | 'updated_at_desc'
+
 export interface TicketListFilter {
   assignee_id?: number
   status_id?: number
   category?: StatusCategory
   overdue?: boolean
+  sort?: TicketSort
   page?: number
   per_page?: number
   [key: string]: string | number | boolean | undefined
