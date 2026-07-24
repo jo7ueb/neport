@@ -1,3 +1,4 @@
+pub mod access_log;
 pub mod client_ip;
 pub mod handlers;
 pub mod models;

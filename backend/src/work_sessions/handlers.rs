@@ -49,18 +49,22 @@ async fn ensure_session_editable(state: &AppState, user_id: i64, date: NaiveDate
 pub async fn start(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
 ) -> Result<(StatusCode, Json<WorkSession>)> {
     ensure_current_month_open(&state, user.id).await?;
-    let session = repo::start_session(&state.db, user.id).await?;
+    let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
+    let session = repo::start_session(&state.db, user.id, access_log_id).await?;
     Ok((StatusCode::CREATED, Json(session)))
 }
 
 pub async fn end(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
 ) -> Result<Json<WorkSession>> {
     ensure_current_month_open(&state, user.id).await?;
-    let session = repo::end_session(&state.db, user.id).await?;
+    let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
+    let session = repo::end_session(&state.db, user.id, access_log_id).await?;
     Ok(Json(session))
 }
 

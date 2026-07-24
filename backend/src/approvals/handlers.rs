@@ -116,6 +116,7 @@ pub async fn get_day(
 pub async fn decide(
     State(state): State<Arc<AppState>>,
     AuthUser(approver): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(UserDatePath { user_id, date }): Path<UserDatePath>,
     Json(payload): Json<DecideRequest>,
 ) -> Result<Json<DecisionRecord>> {
@@ -150,6 +151,7 @@ pub async fn decide(
         ));
     }
 
+    let access_log_id = crate::audit::access_log::record(&state.db, approver.id, ip.as_deref()).await?;
     let record = repo::insert_decision(
         &state.db,
         user_id,
@@ -158,6 +160,7 @@ pub async fn decide(
         &approver.display_name,
         payload.decision,
         &payload.comment,
+        access_log_id,
     )
     .await?;
 
@@ -183,6 +186,7 @@ pub struct UserMonthPath {
 pub async fn close_month(
     State(state): State<Arc<AppState>>,
     AuthUser(approver): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(UserMonthPath { user_id, year, month }): Path<UserMonthPath>,
 ) -> Result<Json<ClosureState>> {
     require_approver_of(&state.db, approver.id, user_id).await?;
@@ -199,7 +203,8 @@ pub async fn close_month(
         ));
     }
 
-    repo::insert_closure_action(&state.db, user_id, year, month as i32, approver.id, "closed").await?;
+    let access_log_id = crate::audit::access_log::record(&state.db, approver.id, ip.as_deref()).await?;
+    repo::insert_closure_action(&state.db, user_id, year, month as i32, approver.id, "closed", access_log_id).await?;
     let closure = repo::get_closure_state(&state.db, user_id, year, month as i32).await?;
     Ok(Json(closure))
 }
@@ -207,6 +212,7 @@ pub async fn close_month(
 pub async fn reopen_month(
     State(state): State<Arc<AppState>>,
     AuthUser(approver): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(UserMonthPath { user_id, year, month }): Path<UserMonthPath>,
 ) -> Result<Json<ClosureState>> {
     require_approver_of(&state.db, approver.id, user_id).await?;
@@ -215,7 +221,8 @@ pub async fn reopen_month(
         return Err(AppError::BadRequest("this month is not closed".to_string()));
     }
 
-    repo::insert_closure_action(&state.db, user_id, year, month as i32, approver.id, "reopened").await?;
+    let access_log_id = crate::audit::access_log::record(&state.db, approver.id, ip.as_deref()).await?;
+    repo::insert_closure_action(&state.db, user_id, year, month as i32, approver.id, "reopened", access_log_id).await?;
     let closure = repo::get_closure_state(&state.db, user_id, year, month as i32).await?;
     Ok(Json(closure))
 }

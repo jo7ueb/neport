@@ -36,13 +36,15 @@ pub mod handlers {
     pub async fn create_comment(
         State(state): State<Arc<AppState>>,
         AuthUser(user): AuthUser,
+        crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
         Path(ticket_id): Path<i64>,
         Json(payload): Json<CreateCommentRequest>,
     ) -> Result<(StatusCode, Json<TicketComment>)> {
         let project_id = access::project_id_for_ticket(&state.db, ticket_id).await?;
         access::check_project_access(&state.db, &user, project_id, Access::Write).await?;
-        let comment = super::create_comment(&state.db, ticket_id, user.id, &payload.body).await?;
-        activity_log::repo::record(&state.db, ticket_id, user.id, ActivityType::Comment).await?;
+        let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
+        let comment = super::create_comment(&state.db, ticket_id, user.id, &payload.body, access_log_id).await?;
+        activity_log::repo::record(&state.db, ticket_id, user.id, ActivityType::Comment, access_log_id).await?;
 
         // Notify whoever has a stake in this ticket (assignee + reporter),
         // excluding the commenter themselves and de-duplicated in case the
@@ -78,13 +80,15 @@ pub async fn create_comment(
     ticket_id: i64,
     author_id: i64,
     body: &str,
+    access_log_id: i64,
 ) -> Result<TicketComment> {
     sqlx::query_as::<_, (i64, i64, i64, String, chrono::DateTime<chrono::Utc>, Option<chrono::DateTime<chrono::Utc>>)>(
-        "INSERT INTO ticket_comments (ticket_id, author_id, body, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NULL) RETURNING id, ticket_id, author_id, body, created_at, updated_at"
+        "INSERT INTO ticket_comments (ticket_id, author_id, body, created_at, updated_at, access_log_id) VALUES ($1, $2, $3, NOW(), NULL, $4) RETURNING id, ticket_id, author_id, body, created_at, updated_at"
     )
     .bind(ticket_id)
     .bind(author_id)
     .bind(body)
+    .bind(access_log_id)
     .fetch_one(db)
     .await
     .map_err(AppError::Database)

@@ -117,6 +117,7 @@ pub async fn get_ticket_tree(
 pub async fn create_ticket(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Json(payload): Json<CreateTicketRequest>,
 ) -> Result<(StatusCode, Json<Ticket>)> {
     access::check_project_access(&state.db, &user, payload.project_id, Access::Write).await?;
@@ -148,7 +149,8 @@ pub async fn create_ticket(
     )
     .await?;
 
-    activity_log::repo::record(&state.db, ticket.id, user.id, ActivityType::Created).await?;
+    let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
+    activity_log::repo::record(&state.db, ticket.id, user.id, ActivityType::Created, access_log_id).await?;
 
     if let Some(assignee_id) = ticket.assignee_id {
         crate::notifications::repo::notify_ticket_assigned(&state.db, assignee_id, user.id, ticket.id).await?;
@@ -164,6 +166,7 @@ pub async fn create_ticket(
 pub async fn update_ticket(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     Path(id): Path<i64>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<Ticket>> {
@@ -202,7 +205,8 @@ pub async fn update_ticket(
     let update = repo::build_ticket_update(&payload)?;
     let ticket = repo::update_ticket(&state.db, id, update).await?;
 
-    record_update_activity(&state, id, user.id, &before, &ticket).await?;
+    let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
+    record_update_activity(&state, id, user.id, &before, &ticket, access_log_id).await?;
 
     Ok(Json(ticket))
 }
@@ -243,9 +247,10 @@ async fn record_update_activity(
     user_id: i64,
     before: &Ticket,
     after: &Ticket,
+    access_log_id: i64,
 ) -> Result<()> {
     if before.status.id != after.status.id {
-        activity_log::repo::record_status_change(&state.db, ticket_id, user_id, before.status.id, after.status.id).await?;
+        activity_log::repo::record_status_change(&state.db, ticket_id, user_id, before.status.id, after.status.id, access_log_id).await?;
 
         // Just reached "done" (completed, but not yet confirmed) - ask a
         // project manager to review and confirm/close it. Not fired when the
@@ -257,7 +262,7 @@ async fn record_update_activity(
     }
 
     if before.assignee_id != after.assignee_id {
-        activity_log::repo::record_assignee_change(&state.db, ticket_id, user_id, before.assignee_id, after.assignee_id).await?;
+        activity_log::repo::record_assignee_change(&state.db, ticket_id, user_id, before.assignee_id, after.assignee_id, access_log_id).await?;
         if let Some(assignee_id) = after.assignee_id {
             crate::notifications::repo::notify_ticket_assigned(&state.db, assignee_id, user_id, ticket_id).await?;
         }
@@ -265,7 +270,7 @@ async fn record_update_activity(
 
     if before.title != after.title {
         activity_log::repo::record_field_change(
-            &state.db, ticket_id, user_id, "title", Some(before.title.clone()), Some(after.title.clone()),
+            &state.db, ticket_id, user_id, "title", Some(before.title.clone()), Some(after.title.clone()), access_log_id,
         ).await?;
     }
     if before.description != after.description {
@@ -276,6 +281,7 @@ async fn record_update_activity(
             "description",
             before.description.as_deref().map(truncate_text),
             after.description.as_deref().map(truncate_text),
+            access_log_id,
         ).await?;
 
         let old_text = before.description.as_deref().unwrap_or("");
@@ -287,30 +293,30 @@ async fn record_update_activity(
     if before.due_date != after.due_date {
         activity_log::repo::record_field_change(
             &state.db, ticket_id, user_id, "due_date",
-            before.due_date.map(|d| d.to_string()), after.due_date.map(|d| d.to_string()),
+            before.due_date.map(|d| d.to_string()), after.due_date.map(|d| d.to_string()), access_log_id,
         ).await?;
     }
     if before.start_date != after.start_date {
         activity_log::repo::record_field_change(
             &state.db, ticket_id, user_id, "start_date",
-            before.start_date.map(|d| d.to_string()), after.start_date.map(|d| d.to_string()),
+            before.start_date.map(|d| d.to_string()), after.start_date.map(|d| d.to_string()), access_log_id,
         ).await?;
     }
     if before.end_date != after.end_date {
         activity_log::repo::record_field_change(
             &state.db, ticket_id, user_id, "end_date",
-            before.end_date.map(|d| d.to_string()), after.end_date.map(|d| d.to_string()),
+            before.end_date.map(|d| d.to_string()), after.end_date.map(|d| d.to_string()), access_log_id,
         ).await?;
     }
     if before.milestone_id != after.milestone_id {
         let from_text = milestone_text(state, before.milestone_id).await?;
         let to_text = milestone_text(state, after.milestone_id).await?;
-        activity_log::repo::record_field_change(&state.db, ticket_id, user_id, "milestone_id", from_text, to_text).await?;
+        activity_log::repo::record_field_change(&state.db, ticket_id, user_id, "milestone_id", from_text, to_text, access_log_id).await?;
     }
     if before.parent_ticket_id != after.parent_ticket_id {
         let from_text = parent_ticket_text(state, before.parent_ticket_id).await?;
         let to_text = parent_ticket_text(state, after.parent_ticket_id).await?;
-        activity_log::repo::record_field_change(&state.db, ticket_id, user_id, "parent_ticket_id", from_text, to_text).await?;
+        activity_log::repo::record_field_change(&state.db, ticket_id, user_id, "parent_ticket_id", from_text, to_text, access_log_id).await?;
     }
 
     Ok(())

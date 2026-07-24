@@ -8,15 +8,17 @@ pub async fn upsert(
     content_type: &str,
     size_bytes: i64,
     uploaded_by_id: Option<i64>,
+    access_log_id: Option<i64>,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO attachments (sha256, content_type, size_bytes, uploaded_by_id) VALUES ($1, $2, $3, $4)
+        "INSERT INTO attachments (sha256, content_type, size_bytes, uploaded_by_id, access_log_id) VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (sha256) DO NOTHING",
     )
     .bind(sha256)
     .bind(content_type)
     .bind(size_bytes)
     .bind(uploaded_by_id)
+    .bind(access_log_id)
     .execute(db)
     .await
     .map_err(AppError::Database)?;

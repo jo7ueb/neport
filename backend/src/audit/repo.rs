@@ -39,9 +39,10 @@ const ENTRIES_SQL: &str = "(
     SELECT 'audit-' || a.id::text AS id, a.actor_id, actor.display_name AS actor_name, a.action,
         a.target_type, a.target_id,
         COALESCE(tu.display_name, tp.name, tt.title, tw.name, tm.name) AS target_name,
-        a.from_text, a.to_text, a.ip_address, a.occurred_at
+        a.from_text, a.to_text, al.ip_address, a.occurred_at
     FROM audit_log a
     JOIN users actor ON actor.id = a.actor_id
+    LEFT JOIN access_log al ON al.id = a.access_log_id
     LEFT JOIN users tu ON tu.id = a.target_id AND a.target_type IN ('user', 'user_approver', 'project_member')
     LEFT JOIN projects tp ON tp.id = a.target_id AND a.target_type = 'project'
     LEFT JOIN tickets tt ON tt.id = a.target_id AND a.target_type = 'ticket'
@@ -81,7 +82,7 @@ UNION ALL
             WHEN 'field_update' THEN t.to_text
             ELSE NULL
         END,
-        NULL::text, t.occurred_at
+        al.ip_address, t.occurred_at
     FROM ticket_activity_log t
     JOIN users actor ON actor.id = t.user_id
     JOIN tickets tk ON tk.id = t.ticket_id
@@ -89,6 +90,7 @@ UNION ALL
     LEFT JOIN workflow_statuses to_ws ON to_ws.id = t.to_status_id
     LEFT JOIN users from_u ON from_u.id = t.from_assignee_id
     LEFT JOIN users to_u ON to_u.id = t.to_assignee_id
+    LEFT JOIN access_log al ON al.id = t.access_log_id
     WHERE t.activity_type != 'comment'
 )
 UNION ALL
@@ -96,21 +98,23 @@ UNION ALL
     SELECT 'ticket_comment-' || c.id::text, c.author_id, actor.display_name, 'ticket_commented',
         'ticket', c.ticket_id, tk.title, NULL::text,
         LEFT(c.body, 80) || CASE WHEN LENGTH(c.body) > 80 THEN '…' ELSE '' END,
-        NULL::text, c.created_at
+        al.ip_address, c.created_at
     FROM ticket_comments c
     JOIN users actor ON actor.id = c.author_id
     JOIN tickets tk ON tk.id = c.ticket_id
+    LEFT JOIN access_log al ON al.id = c.access_log_id
 )
 UNION ALL
 (
     SELECT 'dependency_added-' || d.id::text, d.created_by_id, actor.display_name, 'dependency_added',
         'ticket', d.successor_ticket_id, succ.title,
         NULL::text, '#' || pred.id::text || ' ' || pred.title,
-        NULL::text, d.created_at
+        al.ip_address, d.created_at
     FROM ticket_dependencies d
     JOIN users actor ON actor.id = d.created_by_id
     JOIN tickets succ ON succ.id = d.successor_ticket_id
     JOIN tickets pred ON pred.id = d.predecessor_ticket_id
+    LEFT JOIN access_log al ON al.id = d.created_access_log_id
     WHERE d.created_by_id IS NOT NULL
 )
 UNION ALL
@@ -118,47 +122,52 @@ UNION ALL
     SELECT 'dependency_removed-' || d.id::text, d.deleted_by_id, actor.display_name, 'dependency_removed',
         'ticket', d.successor_ticket_id, succ.title,
         NULL::text, '#' || pred.id::text || ' ' || pred.title,
-        NULL::text, d.deleted_at
+        al.ip_address, d.deleted_at
     FROM ticket_dependencies d
     JOIN users actor ON actor.id = d.deleted_by_id
     JOIN tickets succ ON succ.id = d.successor_ticket_id
     JOIN tickets pred ON pred.id = d.predecessor_ticket_id
+    LEFT JOIN access_log al ON al.id = d.deleted_access_log_id
     WHERE d.deleted_at IS NOT NULL AND d.deleted_by_id IS NOT NULL
 )
 UNION ALL
 (
     SELECT 'daily_approval-' || a.id::text, a.approver_id, actor.display_name, 'report_' || a.decision,
         'user', a.user_id, subject.display_name, NULL::text, a.report_date::text,
-        NULL::text, a.decided_at
+        al.ip_address, a.decided_at
     FROM daily_approvals a
     JOIN users actor ON actor.id = a.approver_id
     JOIN users subject ON subject.id = a.user_id
+    LEFT JOIN access_log al ON al.id = a.access_log_id
 )
 UNION ALL
 (
     SELECT 'monthly_closure-' || m.id::text, m.actor_id, actor.display_name, 'month_' || m.action,
         'user', m.user_id, subject.display_name, NULL::text,
         m.year::text || '-' || LPAD(m.month::text, 2, '0'),
-        NULL::text, m.acted_at
+        al.ip_address, m.acted_at
     FROM monthly_closures m
     JOIN users actor ON actor.id = m.actor_id
     JOIN users subject ON subject.id = m.user_id
+    LEFT JOIN access_log al ON al.id = m.access_log_id
 )
 UNION ALL
 (
     SELECT 'work_session_start-' || w.id::text, w.user_id, actor.display_name, 'work_session_started',
         'user', w.user_id, actor.display_name, NULL::text, NULL::text,
-        NULL::text, w.started_at
+        al.ip_address, w.started_at
     FROM work_sessions w
     JOIN users actor ON actor.id = w.user_id
+    LEFT JOIN access_log al ON al.id = w.start_access_log_id
 )
 UNION ALL
 (
     SELECT 'work_session_end-' || w.id::text, w.user_id, actor.display_name, 'work_session_ended',
         'user', w.user_id, actor.display_name, NULL::text, NULL::text,
-        NULL::text, w.ended_at
+        al.ip_address, w.ended_at
     FROM work_sessions w
     JOIN users actor ON actor.id = w.user_id
+    LEFT JOIN access_log al ON al.id = w.end_access_log_id
     WHERE w.ended_at IS NOT NULL
 )
 UNION ALL
@@ -166,20 +175,22 @@ UNION ALL
     SELECT 'attachment-' || a.id::text, a.uploaded_by_id, actor.display_name, 'attachment_uploaded',
         'attachment', a.id, NULL::text, NULL::text,
         a.content_type || ' (' || pg_size_pretty(a.size_bytes) || ')',
-        NULL::text, a.created_at
+        al.ip_address, a.created_at
     FROM attachments a
     JOIN users actor ON actor.id = a.uploaded_by_id
+    LEFT JOIN access_log al ON al.id = a.access_log_id
     WHERE a.uploaded_by_id IS NOT NULL
 )
 UNION ALL
 (
     SELECT 'approver_assigned-' || u.id::text, u.assigned_by_id, actor.display_name, 'approver_assigned',
         'user', u.user_id, subject.display_name, NULL::text, approver.display_name,
-        NULL::text, u.created_at
+        al.ip_address, u.created_at
     FROM user_approvers u
     JOIN users actor ON actor.id = u.assigned_by_id
     JOIN users subject ON subject.id = u.user_id
     JOIN users approver ON approver.id = u.approver_id
+    LEFT JOIN access_log al ON al.id = u.access_log_id
     WHERE u.assigned_by_id IS NOT NULL
 )";
 
@@ -245,8 +256,9 @@ pub async fn record(
     to_text: Option<&str>,
     ip_address: Option<&str>,
 ) -> Result<()> {
+    let access_log_id = super::access_log::record(db, actor_id, ip_address).await?;
     sqlx::query(
-        "INSERT INTO audit_log (actor_id, action, target_type, target_id, from_text, to_text, ip_address, occurred_at) \
+        "INSERT INTO audit_log (actor_id, action, target_type, target_id, from_text, to_text, access_log_id, occurred_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
     )
     .bind(actor_id)
@@ -255,7 +267,7 @@ pub async fn record(
     .bind(target_id)
     .bind(from_text)
     .bind(to_text)
-    .bind(ip_address)
+    .bind(access_log_id)
     .execute(db)
     .await
     .map_err(AppError::Database)?;

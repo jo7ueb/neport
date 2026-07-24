@@ -41,13 +41,14 @@ fn row_to_activity(row: ActivityRow) -> TicketActivity {
 }
 
 // For activity types that don't carry any before/after data (created, comment).
-pub async fn record(db: &PgPool, ticket_id: i64, user_id: i64, activity_type: ActivityType) -> Result<()> {
+pub async fn record(db: &PgPool, ticket_id: i64, user_id: i64, activity_type: ActivityType, access_log_id: i64) -> Result<()> {
     sqlx::query(
-        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at) VALUES ($1, $2, $3, NOW())",
+        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, access_log_id) VALUES ($1, $2, $3, NOW(), $4)",
     )
     .bind(ticket_id)
     .bind(user_id)
     .bind(activity_type.to_string())
+    .bind(access_log_id)
     .execute(db)
     .await
     .map_err(AppError::Database)?;
@@ -61,14 +62,16 @@ pub async fn record_status_change(
     user_id: i64,
     from_status_id: i64,
     to_status_id: i64,
+    access_log_id: i64,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, from_status_id, to_status_id) VALUES ($1, $2, 'status_change', NOW(), $3, $4)",
+        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, from_status_id, to_status_id, access_log_id) VALUES ($1, $2, 'status_change', NOW(), $3, $4, $5)",
     )
     .bind(ticket_id)
     .bind(user_id)
     .bind(from_status_id)
     .bind(to_status_id)
+    .bind(access_log_id)
     .execute(db)
     .await
     .map_err(AppError::Database)?;
@@ -82,14 +85,16 @@ pub async fn record_assignee_change(
     user_id: i64,
     from_assignee_id: Option<i64>,
     to_assignee_id: Option<i64>,
+    access_log_id: i64,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, from_assignee_id, to_assignee_id) VALUES ($1, $2, 'assignee_change', NOW(), $3, $4)",
+        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, from_assignee_id, to_assignee_id, access_log_id) VALUES ($1, $2, 'assignee_change', NOW(), $3, $4, $5)",
     )
     .bind(ticket_id)
     .bind(user_id)
     .bind(from_assignee_id)
     .bind(to_assignee_id)
+    .bind(access_log_id)
     .execute(db)
     .await
     .map_err(AppError::Database)?;
@@ -104,15 +109,17 @@ pub async fn record_field_change(
     field_name: &str,
     from_text: Option<String>,
     to_text: Option<String>,
+    access_log_id: i64,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, field_name, from_text, to_text) VALUES ($1, $2, 'field_update', NOW(), $3, $4, $5)",
+        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, field_name, from_text, to_text, access_log_id) VALUES ($1, $2, 'field_update', NOW(), $3, $4, $5, $6)",
     )
     .bind(ticket_id)
     .bind(user_id)
     .bind(field_name)
     .bind(from_text)
     .bind(to_text)
+    .bind(access_log_id)
     .execute(db)
     .await
     .map_err(AppError::Database)?;

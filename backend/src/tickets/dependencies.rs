@@ -101,6 +101,7 @@ pub mod handlers {
     pub async fn create_dependency(
         State(state): State<Arc<AppState>>,
         AuthUser(user): AuthUser,
+        crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
         Path(ticket_id): Path<i64>,
         Json(payload): Json<CreateDependencyRequest>,
     ) -> Result<(StatusCode, Json<TicketDependency>)> {
@@ -128,18 +129,21 @@ pub mod handlers {
             ));
         }
 
-        let dep = super::create_dependency(&state.db, predecessor_id, successor_id, user.id).await?;
+        let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
+        let dep = super::create_dependency(&state.db, predecessor_id, successor_id, user.id, access_log_id).await?;
         Ok((StatusCode::CREATED, Json(dep)))
     }
 
     pub async fn delete_dependency(
         State(state): State<Arc<AppState>>,
         AuthUser(user): AuthUser,
+        crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
         Path((ticket_id, dependency_id)): Path<(i64, i64)>,
     ) -> Result<StatusCode> {
         let project_id = access::project_id_for_ticket(&state.db, ticket_id).await?;
         access::check_project_access(&state.db, &user, project_id, Access::Write).await?;
-        super::delete_dependency(&state.db, dependency_id, Some(user.id)).await?;
+        let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
+        super::delete_dependency(&state.db, dependency_id, Some(user.id), access_log_id).await?;
         Ok(StatusCode::NO_CONTENT)
     }
 }
@@ -189,13 +193,15 @@ pub async fn create_dependency(
     predecessor_id: i64,
     successor_id: i64,
     created_by_id: i64,
+    access_log_id: i64,
 ) -> Result<TicketDependency> {
     sqlx::query_as::<_, (i64, i64, i64, chrono::DateTime<chrono::Utc>, Option<i64>)>(
-        "INSERT INTO ticket_dependencies (predecessor_ticket_id, successor_ticket_id, created_at, created_by_id) VALUES ($1, $2, NOW(), $3) RETURNING id, predecessor_ticket_id, successor_ticket_id, created_at, created_by_id"
+        "INSERT INTO ticket_dependencies (predecessor_ticket_id, successor_ticket_id, created_at, created_by_id, created_access_log_id) VALUES ($1, $2, NOW(), $3, $4) RETURNING id, predecessor_ticket_id, successor_ticket_id, created_at, created_by_id"
     )
     .bind(predecessor_id)
     .bind(successor_id)
     .bind(created_by_id)
+    .bind(access_log_id)
     .fetch_one(db)
     .await
     .map_err(AppError::Database)
@@ -213,10 +219,11 @@ pub async fn create_dependency(
 // Soft delete: the row (and its created_at/created_by_id) is kept around so
 // the ticket timeline can still show the original "added" event even after
 // removal - see the comment on DependentTicket.dependency_deleted_at.
-pub async fn delete_dependency(db: &PgPool, dependency_id: i64, deleted_by_id: Option<i64>) -> Result<()> {
-    sqlx::query("UPDATE ticket_dependencies SET deleted_at = NOW(), deleted_by_id = $2 WHERE id = $1")
+pub async fn delete_dependency(db: &PgPool, dependency_id: i64, deleted_by_id: Option<i64>, access_log_id: i64) -> Result<()> {
+    sqlx::query("UPDATE ticket_dependencies SET deleted_at = NOW(), deleted_by_id = $2, deleted_access_log_id = $3 WHERE id = $1")
         .bind(dependency_id)
         .bind(deleted_by_id)
+        .bind(access_log_id)
         .execute(db)
         .await
         .map_err(AppError::Database)?;

@@ -601,6 +601,7 @@ struct AddApproverRequest {
 async fn add_approver(
     State(state): State<Arc<AppState>>,
     auth::extractors::AdminUser(admin): auth::extractors::AdminUser,
+    audit::client_ip::ClientIp(ip): audit::client_ip::ClientIp,
     Path(user_id): Path<i64>,
     Json(payload): Json<AddApproverRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>)> {
@@ -612,7 +613,8 @@ async fn add_approver(
             "this user does not have the approver flag enabled".to_string(),
         ));
     }
-    approvals::repo::add_approver(&state.db, user_id, payload.approver_id, Some(admin.id)).await?;
+    let access_log_id = audit::access_log::record(&state.db, admin.id, ip.as_deref()).await?;
+    approvals::repo::add_approver(&state.db, user_id, payload.approver_id, Some(admin.id), Some(access_log_id)).await?;
     Ok((StatusCode::CREATED, Json(json!({ "message": "Added" }))))
 }
 

@@ -33,6 +33,7 @@ pub struct UploadedAttachment {
 pub async fn upload_attachment(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    crate::audit::client_ip::ClientIp(ip): crate::audit::client_ip::ClientIp,
     mut multipart: axum::extract::Multipart,
 ) -> Result<(StatusCode, Json<UploadedAttachment>)> {
     let mut file_data: Option<Vec<u8>> = None;
@@ -71,7 +72,8 @@ pub async fn upload_attachment(
         state.storage.write(&filename, &data).await?;
     }
 
-    repo::upsert(&state.db, &sha256, &content_type, data.len() as i64, Some(user.id)).await?;
+    let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
+    repo::upsert(&state.db, &sha256, &content_type, data.len() as i64, Some(user.id), Some(access_log_id)).await?;
 
     Ok((
         StatusCode::CREATED,

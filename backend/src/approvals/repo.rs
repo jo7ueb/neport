@@ -47,11 +47,12 @@ pub async fn list_approvers_for_user(db: &PgPool, user_id: i64) -> Result<Vec<Us
         .map(|rows| rows.into_iter().map(row_to_user).collect())
 }
 
-pub async fn add_approver(db: &PgPool, user_id: i64, approver_id: i64, assigned_by_id: Option<i64>) -> Result<()> {
-    let result = sqlx::query("INSERT INTO user_approvers (user_id, approver_id, assigned_by_id) VALUES ($1, $2, $3)")
+pub async fn add_approver(db: &PgPool, user_id: i64, approver_id: i64, assigned_by_id: Option<i64>, access_log_id: Option<i64>) -> Result<()> {
+    let result = sqlx::query("INSERT INTO user_approvers (user_id, approver_id, assigned_by_id, access_log_id) VALUES ($1, $2, $3, $4)")
         .bind(user_id)
         .bind(approver_id)
         .bind(assigned_by_id)
+        .bind(access_log_id)
         .execute(db)
         .await;
 
@@ -237,16 +238,18 @@ pub async fn insert_decision(
     approver_name: &str,
     decision: Decision,
     comment: &str,
+    access_log_id: i64,
 ) -> Result<DecisionRecord> {
     let (decided_at,): (DateTime<Utc>,) = sqlx::query_as(
-        "INSERT INTO daily_approvals (user_id, report_date, decision, comment, approver_id)
-         VALUES ($1, $2, $3, $4, $5) RETURNING decided_at",
+        "INSERT INTO daily_approvals (user_id, report_date, decision, comment, approver_id, access_log_id)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING decided_at",
     )
     .bind(user_id)
     .bind(date)
     .bind(decision.to_string())
     .bind(comment)
     .bind(approver_id)
+    .bind(access_log_id)
     .fetch_one(db)
     .await
     .map_err(AppError::Database)?;
@@ -296,13 +299,15 @@ pub async fn insert_closure_action(
     month: i32,
     actor_id: i64,
     action: &str,
+    access_log_id: i64,
 ) -> Result<()> {
-    sqlx::query("INSERT INTO monthly_closures (user_id, year, month, action, actor_id) VALUES ($1, $2, $3, $4, $5)")
+    sqlx::query("INSERT INTO monthly_closures (user_id, year, month, action, actor_id, access_log_id) VALUES ($1, $2, $3, $4, $5, $6)")
         .bind(user_id)
         .bind(year)
         .bind(month)
         .bind(action)
         .bind(actor_id)
+        .bind(access_log_id)
         .execute(db)
         .await
         .map_err(AppError::Database)?;

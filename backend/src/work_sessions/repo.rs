@@ -31,11 +31,12 @@ pub async fn get_open_session(db: &PgPool, user_id: i64) -> Result<Option<WorkSe
     .map(|row| row.map(row_to_session))
 }
 
-pub async fn start_session(db: &PgPool, user_id: i64) -> Result<WorkSession> {
+pub async fn start_session(db: &PgPool, user_id: i64, access_log_id: i64) -> Result<WorkSession> {
     let result = sqlx::query_as::<_, SessionRow>(
-        "INSERT INTO work_sessions (user_id, started_at) VALUES ($1, NOW()) RETURNING id, user_id, started_at, ended_at, created_at, updated_at"
+        "INSERT INTO work_sessions (user_id, started_at, start_access_log_id) VALUES ($1, NOW(), $2) RETURNING id, user_id, started_at, ended_at, created_at, updated_at"
     )
     .bind(user_id)
+    .bind(access_log_id)
     .fetch_one(db)
     .await;
 
@@ -86,15 +87,16 @@ pub async fn update_session(
     .map(row_to_session)
 }
 
-pub async fn end_session(db: &PgPool, user_id: i64) -> Result<WorkSession> {
+pub async fn end_session(db: &PgPool, user_id: i64, access_log_id: i64) -> Result<WorkSession> {
     let open = get_open_session(db, user_id)
         .await?
         .ok_or_else(|| AppError::BadRequest("no work session is currently in progress".to_string()))?;
 
     sqlx::query_as::<_, SessionRow>(
-        "UPDATE work_sessions SET ended_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING id, user_id, started_at, ended_at, created_at, updated_at"
+        "UPDATE work_sessions SET ended_at = NOW(), updated_at = NOW(), end_access_log_id = $2 WHERE id = $1 RETURNING id, user_id, started_at, ended_at, created_at, updated_at"
     )
     .bind(open.id)
+    .bind(access_log_id)
     .fetch_one(db)
     .await
     .map_err(AppError::Database)

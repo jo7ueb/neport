@@ -68,6 +68,83 @@ const ACTION_KEYS = {
   approver_assigned: 'adminAuditLog.action.approverAssigned',
 } as const satisfies Record<AuditAction, string>
 
+// Groups every action into a badge color so the action column reads as
+// scannable color blocks instead of a wall of same-styled text. Grouped by
+// domain (ticket/report-attendance/user/project/workflow/system), with
+// login_failed pulled out of the auth group since it's the one auth event
+// worth visually flagging.
+type BadgeColor = 'gray' | 'red' | 'purple' | 'amber' | 'teal' | 'blue' | 'green'
+
+const BADGE_CLASSES: Record<BadgeColor, string> = {
+  gray: 'bg-gray-100 text-gray-700',
+  red: 'bg-red-100 text-red-700',
+  purple: 'bg-purple-100 text-purple-700',
+  amber: 'bg-amber-100 text-amber-700',
+  teal: 'bg-teal-100 text-teal-700',
+  blue: 'bg-blue-100 text-blue-700',
+  green: 'bg-green-100 text-green-700',
+}
+
+const ACTION_COLOR = {
+  user_suspended: 'purple',
+  user_resumed: 'purple',
+  user_deleted: 'purple',
+  user_role_changed: 'purple',
+  user_approver_flag_changed: 'purple',
+  user_password_reset: 'purple',
+  approver_removed: 'purple',
+  project_archived: 'amber',
+  project_unarchived: 'amber',
+  project_member_removed: 'amber',
+  system_settings_updated: 'gray',
+  ticket_deleted: 'blue',
+  workflow_deleted: 'teal',
+  workflow_status_deleted: 'teal',
+  workflow_transition_deleted: 'teal',
+  login: 'gray',
+  login_failed: 'red',
+  logout: 'gray',
+  password_changed: 'gray',
+  backup_created: 'gray',
+  backup_restored: 'gray',
+  user_created: 'purple',
+  milestone_created: 'amber',
+  milestone_updated: 'amber',
+  milestone_deleted: 'amber',
+  project_created: 'amber',
+  project_updated: 'amber',
+  project_member_added: 'amber',
+  project_member_role_changed: 'amber',
+  workflow_created: 'teal',
+  workflow_updated: 'teal',
+  workflow_status_created: 'teal',
+  workflow_status_updated: 'teal',
+  workflow_transition_created: 'teal',
+  work_session_edited: 'green',
+  ticket_created: 'blue',
+  ticket_status_change: 'blue',
+  ticket_assignee_change: 'blue',
+  ticket_title_changed: 'blue',
+  ticket_description_changed: 'blue',
+  ticket_due_date_changed: 'blue',
+  ticket_start_date_changed: 'blue',
+  ticket_end_date_changed: 'blue',
+  ticket_milestone_changed: 'blue',
+  ticket_parent_changed: 'blue',
+  ticket_field_changed: 'blue',
+  ticket_commented: 'blue',
+  dependency_added: 'blue',
+  dependency_removed: 'blue',
+  report_approved: 'green',
+  report_rejected: 'green',
+  month_closed: 'green',
+  month_reopened: 'green',
+  work_session_started: 'green',
+  work_session_ended: 'green',
+  attachment_uploaded: 'gray',
+  approver_assigned: 'purple',
+} as const satisfies Record<AuditAction, BadgeColor>
+
 export function AdminAuditLogPage() {
   const { t, i18n } = useTranslation()
   const { user: currentUser } = useAuth()
@@ -154,15 +231,15 @@ export function AdminAuditLogPage() {
       {isLoading ? (
         <p className="text-gray-500">{t('common.loading')}</p>
       ) : (
-        <table className="w-full overflow-hidden rounded border bg-white text-sm">
+        <table className="w-full table-fixed overflow-hidden rounded border bg-white text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
             <tr>
-              <th className="px-3 py-2">{t('adminAuditLog.columnOccurredAt')}</th>
-              <th className="px-3 py-2">{t('adminAuditLog.columnActor')}</th>
-              <th className="px-3 py-2">{t('adminAuditLog.columnAction')}</th>
-              <th className="px-3 py-2">{t('adminAuditLog.columnTarget')}</th>
+              <th className="w-40 px-3 py-2">{t('adminAuditLog.columnOccurredAt')}</th>
+              <th className="w-32 px-3 py-2">{t('adminAuditLog.columnActor')}</th>
+              <th className="w-52 px-3 py-2">{t('adminAuditLog.columnAction')}</th>
+              <th className="w-40 px-3 py-2">{t('adminAuditLog.columnTarget')}</th>
               <th className="px-3 py-2">{t('adminAuditLog.columnDetail')}</th>
-              <th className="px-3 py-2">{t('adminAuditLog.columnIp')}</th>
+              <th className="w-32 px-3 py-2">{t('adminAuditLog.columnIp')}</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -178,12 +255,18 @@ export function AdminAuditLogPage() {
                 <td className="px-3 py-2 whitespace-nowrap text-gray-500">
                   {new Date(entry.occurred_at).toLocaleString(i18n.language)}
                 </td>
-                <td className="px-3 py-2">{entry.actor_name}</td>
-                <td className="px-3 py-2">{t(ACTION_KEYS[entry.action] ?? entry.action)}</td>
+                <td className="truncate px-3 py-2">{entry.actor_name}</td>
                 <td className="px-3 py-2">
+                  <span
+                    className={`inline-block truncate rounded-full px-2.5 py-0.5 text-xs font-medium ${BADGE_CLASSES[ACTION_COLOR[entry.action]]}`}
+                  >
+                    {t(ACTION_KEYS[entry.action] ?? entry.action)}
+                  </span>
+                </td>
+                <td className="truncate px-3 py-2">
                   {entry.target_name ?? (entry.target_id !== null ? `${entry.target_type} #${entry.target_id}` : entry.target_type)}
                 </td>
-                <td className="px-3 py-2 text-gray-500">
+                <td className="break-words px-3 py-2 text-gray-500">
                   {entry.from_text && entry.to_text
                     ? `${entry.from_text} → ${entry.to_text}`
                     : entry.to_text ?? entry.from_text ?? ''}
