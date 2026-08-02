@@ -83,6 +83,49 @@ SESSION_COOKIE_NAME=neport_session
 SESSION_TTL_SECONDS=86400
 ```
 
+## MCPサーバー
+
+`neport-mcp` はNeportの目的別ツールをstdioで公開します。タグリリースのGitHub Releaseからwheelまたはzipをダウンロードできるため、リポジトリをcloneする必要はありません。
+`v*`タグ（例: `v1.0.0`）をpushすると、MCP wheel、MCP zip、リポジトリ全体のtar.gzがReleaseへ添付されます。
+
+```bash
+# GitHub Releaseからダウンロードしたwheel
+pipx install neport_mcp-0.1.0-py3-none-any.whl
+# またはzipを展開して
+pip install ./mcp
+```
+
+先にWeb画面またはCookie認証で
+`POST /api/v1/auth/tokens`を呼び出して、`read`または`read,write`スコープのトークンを発行してください。
+平文トークンは発行時に一度だけ表示されます。
+
+```bash
+NEPORT_API_URL=https://neport.yendo.info \
+NEPORT_API_TOKEN=npt_... \
+neport-mcp
+```
+
+Claude Desktopの設定例:
+
+```json
+{
+  "mcpServers": {
+    "neport": {
+      "command": "/home/user/.local/bin/neport-mcp",
+      "env": {
+        "NEPORT_API_URL": "https://neport.yendo.info",
+        "NEPORT_API_TOKEN": "npt_...",
+        "NEPORT_MCP_TIMEOUT_MS": "15000",
+        "NEPORT_MCP_LOG_LEVEL": "info"
+      }
+    }
+  }
+}
+```
+
+変更系ツールは`write`スコープと通常のNeport権限が必要です。不要になったトークンは
+`DELETE /api/v1/auth/tokens/{id}`で失効させてください。トークン値をログやリポジトリへ保存しないでください。
+
 ## API エンドポイント（抜粋）
 
 **ページネーション**: プロジェクト一覧・チケット一覧・ユーザー一覧・コメント

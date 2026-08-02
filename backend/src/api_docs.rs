@@ -3,7 +3,7 @@
 use std::{fs, io};
 
 use utoipa::{
-    openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
+    openapi::security::{ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme},
     Modify, OpenApi, ToSchema,
 };
 
@@ -14,7 +14,7 @@ use utoipa::{
     info(
         title = "Neport API",
         version = "0.1.0",
-        description = "English-first API documentation for Neport. Every operation explains when to use it, what to send, what comes back, and how to recover from errors. State-changing requests require the session cookie and X-CSRF-Token header."
+        description = "English-first API documentation for Neport. Every operation explains when to use it, what to send, what comes back, and how to recover from errors. Browser clients use the session cookie and X-CSRF-Token; integrations may use a scoped Bearer API token."
     ),
     tags(
         (name = "Authentication", description = "When to use: log in, restore a session after reload, and log out. Workflow: login -> retain the CSRF token -> call protected operations with the session cookie."),
@@ -29,12 +29,15 @@ use utoipa::{
         (name = "Administration and backup", description = "When to use: configure workflows, audit access, and protect data. Workflow: export a backup before risky changes; restore only during maintenance and verify the result."),
         (name = "System", description = "When to use: monitor service availability. The health endpoint is safe to call without a user session.")
     ),
-    components(schemas(ApiError, PaginationMeta, LoginRequest, LoginResponse, ProjectCreateRequest, TicketCreateRequest, TicketUpdateRequest, DependencyCreateRequest, CommentCreateRequest, WorkSessionRequest, DailyReportRequest, MonthDecisionRequest)),
+    components(schemas(ApiError, PaginationMeta, LoginRequest, LoginResponse, ApiTokenCreateRequest, ApiTokenInfo, ProjectCreateRequest, TicketCreateRequest, TicketUpdateRequest, DependencyCreateRequest, CommentCreateRequest, WorkSessionRequest, DailyReportRequest, MonthDecisionRequest)),
     paths(
         health_check,
         login,
         logout,
         restore_session,
+        list_api_tokens,
+        create_api_token,
+        revoke_api_token,
         change_password,
         update_locale,
         get_timezone,
@@ -145,6 +148,10 @@ impl Modify for SecurityAddon {
                 "csrf_token",
                 SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("X-CSRF-Token"))),
             );
+            components.add_security_scheme(
+                "bearer_token",
+                SecurityScheme::Http(Http::new(HttpAuthScheme::Bearer)),
+            );
         }
     }
 }
@@ -177,6 +184,27 @@ pub struct LoginRequest {
     /// Password for the account.
     #[schema(format = Password, example = "correct-horse-battery-staple")]
     pub password: String,
+}
+
+#[derive(ToSchema)]
+pub struct ApiTokenCreateRequest {
+    /// Human-readable label for this token.
+    #[schema(example = "Claude Desktop")]
+    pub name: String,
+    /// Allowed scopes. `read` is required; add `write` for mutations.
+    #[schema(example = json!( ["read", "write"] ))]
+    pub scopes: Vec<String>,
+}
+
+#[derive(ToSchema)]
+pub struct ApiTokenInfo {
+    /// Token identifier used for revocation. The secret is never returned here.
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub scopes: Vec<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub last_used_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub revoked_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(ToSchema)]
@@ -322,6 +350,41 @@ fn health_check() {}
     responses((status = 200, description = "Successful response. See the response schema and example above."), (status = 400, description = "Invalid input or invalid state. Correct the request using the error message."), (status = 401, description = "Authentication is missing or expired. Log in again."), (status = 403, description = "The caller lacks permission or the CSRF token is missing or invalid."), (status = 404, description = "The resource does not exist or is not visible to the caller."), (status = 503, description = "Maintenance mode is active. Stop mutations and retry later."))
 )]
 fn login() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/tokens",
+    operation_id = "list_api_tokens",
+    tag = "Authentication",
+    summary = "List personal API tokens",
+    description = "### When to use\nReview the caller's API tokens before connecting an MCP client. Secret token values are never returned.\n\n### Errors\n**401** means the session is missing or expired; log in again.",
+    responses((status = 200, body = [ApiTokenInfo], description = "Token metadata without secrets."), (status = 401, description = "Log in again."))
+)]
+fn list_api_tokens() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/tokens",
+    operation_id = "create_api_token",
+    tag = "Authentication",
+    summary = "Create a personal API token",
+    request_body = ApiTokenCreateRequest,
+    description = "### When to use\nCreate a token for neport-mcp or another trusted integration. The plaintext token is returned exactly once; store it in a secret manager.\n\n### Scopes\n`read` permits safe queries. Add `write` only when the integration must mutate Neport.\n\n### Errors\n**400** correct the name or scopes. **403** send the current CSRF token. **401** log in again.",
+    responses((status = 201, description = "Created; the plaintext token is included once."), (status = 400, description = "Correct the token name or scopes."), (status = 401, description = "Log in again."), (status = 403, description = "Send the current CSRF token."))
+)]
+fn create_api_token() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/v1/auth/tokens/{id}",
+    operation_id = "revoke_api_token",
+    tag = "Authentication",
+    summary = "Revoke a personal API token",
+    params(("id" = uuid::Uuid, Path, description = "Token identifier")),
+    description = "### When to use\nImmediately disable a lost, rotated, or no-longer-needed integration token. Revocation is permanent.\n\n### Errors\n**404** verify the token identifier belongs to the current user. **403** send the current CSRF token.",
+    responses((status = 204, description = "Token revoked."), (status = 401, description = "Log in again."), (status = 403, description = "Send the current CSRF token."), (status = 404, description = "Verify the token identifier."))
+)]
+fn revoke_api_token() {}
 
 #[utoipa::path(
     post,

@@ -195,6 +195,8 @@ async fn main() {
 
     let auth_router = Router::new()
         .merge(login_router)
+        .route("/tokens", get(list_api_tokens).post(create_api_token))
+        .route("/tokens/:id", delete(revoke_api_token))
         .route("/logout", post(auth_logout))
         .route("/me", get(auth_me))
         .route("/password", axum::routing::patch(change_password))
@@ -445,6 +447,36 @@ async fn auth_me(
         user,
         csrf_token: sess.csrf_token,
     }))
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateApiTokenRequest { name: String, #[serde(default = "default_read_scope")] scopes: Vec<String> }
+
+fn default_read_scope() -> Vec<String> { vec!["read".into()] }
+
+async fn create_api_token(
+    State(state): State<Arc<AppState>>,
+    auth::extractors::AuthUser(user): auth::extractors::AuthUser,
+    Json(payload): Json<CreateApiTokenRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>)> {
+    let created = auth::api_tokens::create(&state.db, user.id, &payload.name, &payload.scopes).await?;
+    Ok((StatusCode::CREATED, Json(json!({"token": created.token, "token_info": created.info}))))
+}
+
+async fn list_api_tokens(
+    State(state): State<Arc<AppState>>,
+    auth::extractors::AuthUser(user): auth::extractors::AuthUser,
+) -> Result<Json<Vec<auth::api_tokens::ApiTokenInfo>>> {
+    Ok(Json(auth::api_tokens::list(&state.db, user.id).await?))
+}
+
+async fn revoke_api_token(
+    State(state): State<Arc<AppState>>,
+    auth::extractors::AuthUser(user): auth::extractors::AuthUser,
+    Path(id): Path<uuid::Uuid>,
+) -> Result<StatusCode> {
+    auth::api_tokens::revoke(&state.db, user.id, id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Debug, Deserialize)]

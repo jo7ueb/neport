@@ -6,7 +6,7 @@
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 GIT_DIRTY := $(shell git status --porcelain 2>/dev/null | grep -q . && echo 1 || echo 0)
 
-.PHONY: up down build migrate logs ps test test-up test-down cov site site-serve
+.PHONY: up down build migrate logs ps test test-up test-down cov site site-serve mcp-check
 
 ## Build images (frontend gets the current commit hash) and start the dev stack.
 up: build
@@ -67,6 +67,11 @@ site:
 	npx --yes @redocly/cli@2.36.0 lint --config=site/redocly.yaml site/static/en/developer/api/openapi.json
 	npx --yes @redocly/cli@2.36.0 build-docs site/static/en/developer/api/openapi.json --output=site/static/en/developer/api/index.html --title='Neport API (English)'
 	hugo --source site --destination "$(CURDIR)/site/public" --minify --baseURL='https://jo7ueb.github.io/neport/'
+
+## Compile and run unit tests for the stdio MCP server.
+mcp-check:
+	python3 -m compileall -q mcp/neport_mcp
+	python3 -m pytest -q mcp/tests
 
 ## Serve the Hugo site locally (run `make site` first for API pages).
 site-serve:

@@ -45,6 +45,9 @@ jobs:
           mkdir -p site/static/en/developer/api
           cargo run --manifest-path backend/Cargo.toml -- --export-openapi=site/static/en/developer/api/openapi.json
 
+      - name: Check MCP server
+        run: python3 -m compileall -q mcp/neport_mcp
+
       - name: Lint OpenAPI definitions
         run: |
           npx --yes @redocly/cli@2.36.0 lint --config=site/redocly.yaml site/static/en/developer/api/openapi.json

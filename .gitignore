@@ -1,6 +1,11 @@
 # Rust
 /backend/target/
 Cargo.lock
+/mcp/dist/
+/mcp/*.egg-info/
+/mcp/.venv/
+__pycache__/
+.pytest_cache/
 **/*.rs.bk
 /backend/coverage/
 

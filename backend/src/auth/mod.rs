@@ -1,4 +1,5 @@
 pub mod csrf;
+pub mod api_tokens;
 pub mod extractors;
 pub mod models;
 pub mod password;

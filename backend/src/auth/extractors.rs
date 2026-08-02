@@ -12,6 +12,15 @@ pub struct AuthUser(pub User);
 /// Deliberately does *not* apply the maintenance-mode gate, since that gate
 /// must not apply uniformly - see `AuthUser` vs `MaintenanceModeAdmin`.
 async fn authenticate(parts: &mut Parts, state: &Arc<AppState>) -> Result<User, AppError> {
+    let write = !matches!(parts.method, Method::GET | Method::HEAD | Method::OPTIONS);
+    if let Some(value) = parts.headers.get(axum::http::header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+        if let Some(token) = value.strip_prefix("Bearer ") {
+            let user_id = crate::auth::api_tokens::authenticate(&state.db, token.trim(), write).await?;
+            return crate::users::repo::get_user_by_id(&state.db, user_id)
+                .await?.filter(|u| u.status == UserStatus::Active).ok_or(AppError::Unauthorized);
+        }
+        return Err(AppError::Unauthorized);
+    }
     let cookie_header = parts
         .headers
         .get(axum::http::header::COOKIE)
@@ -26,7 +35,7 @@ async fn authenticate(parts: &mut Parts, state: &Arc<AppState>) -> Result<User, 
         .await?
         .ok_or(AppError::Unauthorized)?;
 
-    if !matches!(parts.method, Method::GET | Method::HEAD | Method::OPTIONS) {
+    if write {
         let provided = parts
             .headers
             .get("X-CSRF-Token")
