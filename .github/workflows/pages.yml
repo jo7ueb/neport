@@ -57,7 +57,7 @@ jobs:
           npx --yes @redocly/cli@2.36.0 build-docs site/static/en/developer/api/openapi.json --output=site/static/en/developer/api/index.html --title='Neport API (English)'
 
       - name: Build Hugo site
-        run: hugo --source site --destination site/public --minify --baseURL='https://jo7ueb.github.io/neport/'
+        run: hugo --source site --destination "$GITHUB_WORKSPACE/site/public" --minify --baseURL='https://jo7ueb.github.io/neport/'
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'

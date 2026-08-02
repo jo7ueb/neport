@@ -69,7 +69,7 @@ site:
 	npx --yes @redocly/cli@2.36.0 lint --config=site/redocly.yaml site/static/en/developer/api/openapi.json
 	npx --yes @redocly/cli@2.36.0 build-docs site/static/ja/developer/api/openapi.json --output=site/static/ja/developer/api/index.html --title='Neport API (日本語)'
 	npx --yes @redocly/cli@2.36.0 build-docs site/static/en/developer/api/openapi.json --output=site/static/en/developer/api/index.html --title='Neport API (English)'
-	hugo --source site --destination site/public --minify --baseURL='https://jo7ueb.github.io/neport/'
+	hugo --source site --destination "$(CURDIR)/site/public" --minify --baseURL='https://jo7ueb.github.io/neport/'
 
 ## Serve the Hugo site locally (run `make site` first for API pages).
 site-serve:
