@@ -42,18 +42,15 @@ jobs:
 
       - name: Generate OpenAPI definitions
         run: |
-          mkdir -p site/static/ja/developer/api site/static/en/developer/api
-          cargo run --manifest-path backend/Cargo.toml -- --export-openapi=site/static/ja/developer/api/openapi.json
-          cp site/static/ja/developer/api/openapi.json site/static/en/developer/api/openapi.json
+          mkdir -p site/static/en/developer/api
+          cargo run --manifest-path backend/Cargo.toml -- --export-openapi=site/static/en/developer/api/openapi.json
 
       - name: Lint OpenAPI definitions
         run: |
-          npx --yes @redocly/cli@2.36.0 lint --config=site/redocly.yaml site/static/ja/developer/api/openapi.json
           npx --yes @redocly/cli@2.36.0 lint --config=site/redocly.yaml site/static/en/developer/api/openapi.json
 
       - name: Build API reference pages
         run: |
-          npx --yes @redocly/cli@2.36.0 build-docs site/static/ja/developer/api/openapi.json --output=site/static/ja/developer/api/index.html --title='Neport API (日本語)'
           npx --yes @redocly/cli@2.36.0 build-docs site/static/en/developer/api/openapi.json --output=site/static/en/developer/api/index.html --title='Neport API (English)'
 
       - name: Build Hugo site

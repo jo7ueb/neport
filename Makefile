@@ -60,14 +60,11 @@ cov:
 	docker compose -f docker-compose.yml -f docker-compose.test.yml -f docker-compose.coverage.yml run --rm coverage
 	docker compose -f docker-compose.yml -f docker-compose.test.yml down
 
-## Generate the multilingual Hugo site and its static OpenAPI/Redoc reference.
+## Generate the English Hugo site and its static OpenAPI/Redoc reference.
 site:
-	mkdir -p site/static/ja/developer/api site/static/en/developer/api
-	cargo run --manifest-path backend/Cargo.toml -- --export-openapi=site/static/ja/developer/api/openapi.json
-	cp site/static/ja/developer/api/openapi.json site/static/en/developer/api/openapi.json
-	npx --yes @redocly/cli@2.36.0 lint --config=site/redocly.yaml site/static/ja/developer/api/openapi.json
+	mkdir -p site/static/en/developer/api
+	cargo run --manifest-path backend/Cargo.toml -- --export-openapi=site/static/en/developer/api/openapi.json
 	npx --yes @redocly/cli@2.36.0 lint --config=site/redocly.yaml site/static/en/developer/api/openapi.json
-	npx --yes @redocly/cli@2.36.0 build-docs site/static/ja/developer/api/openapi.json --output=site/static/ja/developer/api/index.html --title='Neport API (日本語)'
 	npx --yes @redocly/cli@2.36.0 build-docs site/static/en/developer/api/openapi.json --output=site/static/en/developer/api/index.html --title='Neport API (English)'
 	hugo --source site --destination "$(CURDIR)/site/public" --minify --baseURL='https://jo7ueb.github.io/neport/'
 

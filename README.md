@@ -58,9 +58,8 @@ Postgres、添付ファイル: GCS）上での運用もサポートしている�
 
 GitHub Pagesのプロジェクトサイトは、`master`へのpushで自動生成・公開されます。
 
-- 日本語サイト: `https://jo7ueb.github.io/neport/ja/`
 - 英語サイト: `https://jo7ueb.github.io/neport/en/`
-- APIドキュメント: 各言語サイトの「開発者向け情報」から `/developer/api/` へ移動
+- APIドキュメント（英語）: `https://jo7ueb.github.io/neport/en/developer/api/`
 
 ローカルでサイトを生成するには、Rust、Hugo、Node.js 22以降を用意してから次を実行します。
 
