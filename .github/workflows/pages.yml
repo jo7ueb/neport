@@ -1,0 +1,81 @@
+name: Build and deploy project site
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Hugo
+        uses: peaceiris/actions-hugo@v3.2.1
+        with:
+          hugo-version: '0.161.1'
+          extended: true
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Generate OpenAPI definitions
+        run: |
+          mkdir -p site/static/ja/developer/api site/static/en/developer/api
+          cargo run --manifest-path backend/Cargo.toml -- --export-openapi=site/static/ja/developer/api/openapi.json
+          cp site/static/ja/developer/api/openapi.json site/static/en/developer/api/openapi.json
+
+      - name: Lint OpenAPI definitions
+        run: |
+          npx --yes @redocly/cli@2.36.0 lint --config=site/redocly.yaml site/static/ja/developer/api/openapi.json
+          npx --yes @redocly/cli@2.36.0 lint --config=site/redocly.yaml site/static/en/developer/api/openapi.json
+
+      - name: Build API reference pages
+        run: |
+          npx --yes @redocly/cli@2.36.0 build-docs site/static/ja/developer/api/openapi.json --output=site/static/ja/developer/api/index.html --title='Neport API (日本語)'
+          npx --yes @redocly/cli@2.36.0 build-docs site/static/en/developer/api/openapi.json --output=site/static/en/developer/api/index.html --title='Neport API (English)'
+
+      - name: Build Hugo site
+        run: hugo --source site --destination site/public --minify --baseURL='https://jo7ueb.github.io/neport/'
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/public
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

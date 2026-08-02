@@ -54,6 +54,23 @@ docker compose down
 Postgres、添付ファイル: GCS）上での運用もサポートしている。手順は
 [docs/CLOUD_RUN_DEPLOY.md](docs/CLOUD_RUN_DEPLOY.md) を参照。
 
+## プロジェクトサイトとAPIドキュメント
+
+GitHub Pagesのプロジェクトサイトは、`master`へのpushで自動生成・公開されます。
+
+- 日本語サイト: `https://jo7ueb.github.io/neport/ja/`
+- 英語サイト: `https://jo7ueb.github.io/neport/en/`
+- APIドキュメント: 各言語サイトの「開発者向け情報」から `/developer/api/` へ移動
+
+ローカルでサイトを生成するには、Rust、Hugo、Node.js 22以降を用意してから次を実行します。
+
+```bash
+make site
+```
+
+サイト本文は `site/content/ja/` と `site/content/en/` を対応させて追加してください。
+APIのルートや型を変更した場合は、バックエンドのOpenAPI定義も同じ変更に合わせます。
+
 ## 環境変数
 
 `.env` ファイルで設定（開発環境用デフォルト値あり）:

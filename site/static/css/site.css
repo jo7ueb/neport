@@ -1,0 +1,10 @@
+:root { color-scheme: light; font-family: system-ui, -apple-system, sans-serif; color: #172033; background: #f6f8fb; }
+body { margin: 0; line-height: 1.7; }
+.site-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem max(1rem, calc((100% - 960px) / 2)); background: #172033; color: #fff; }
+.site-header a { color: inherit; margin-left: 1rem; }
+.brand { font-size: 1.35rem; font-weight: 700; text-decoration: none; margin-left: 0 !important; }
+.container { max-width: 960px; margin: 0 auto; padding: 3rem 1rem; min-height: 70vh; }
+.prose { background: #fff; border-radius: .75rem; padding: clamp(1.5rem, 4vw, 3rem); box-shadow: 0 8px 30px rgb(23 32 51 / 8%); }
+.prose a { color: #155eef; }
+.prose h1 { line-height: 1.2; }
+.site-footer { max-width: 960px; margin: 0 auto; padding: 1rem; color: #697386; }

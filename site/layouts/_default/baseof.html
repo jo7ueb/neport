@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="{{ .Language.Lang }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ if .Title }}{{ .Title }} | {{ end }}{{ .Site.Title }}</title>
+    <meta name="description" content="{{ .Description | default .Site.Params.description }}">
+    <link rel="stylesheet" href="{{ "css/site.css" | relURL }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="{{ "" | relLangURL }}">Neport</a>
+      <nav aria-label="Language">
+        {{ range .AllTranslations }}
+          <a href="{{ .RelPermalink }}">{{ .Language.LanguageName }}</a>
+        {{ end }}
+      </nav>
+    </header>
+    <main class="container">
+      {{ block "main" . }}{{ end }}
+    </main>
+    <footer class="site-footer">Neport</footer>
+  </body>
+</html>

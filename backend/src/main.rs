@@ -38,6 +38,7 @@ mod time;
 mod users;
 mod work_sessions;
 mod workflows;
+mod api_docs;
 
 use config::Config;
 use error::{AppError, Result};
@@ -45,6 +46,16 @@ use state::AppState;
 
 #[tokio::main]
 async fn main() {
+    if let Some(path) = std::env::args().skip(1).find_map(|arg| {
+        arg.strip_prefix("--export-openapi=").map(str::to_owned)
+    }) {
+        if let Err(err) = api_docs::export(&path) {
+            eprintln!("Failed to export OpenAPI document: {}", err);
+            std::process::exit(1);
+        }
+        return;
+    }
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(

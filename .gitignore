@@ -4,6 +4,15 @@ Cargo.lock
 **/*.rs.bk
 /backend/coverage/
 
+# Hugo / generated API reference
+/site/public/
+/site/resources/
+/site/.hugo_build.lock
+/site/static/ja/developer/api/index.html
+/site/static/ja/developer/api/openapi.json
+/site/static/en/developer/api/index.html
+/site/static/en/developer/api/openapi.json
+
 # Node / Frontend
 /frontend/node_modules/
 /frontend/dist/

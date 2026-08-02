@@ -1,0 +1,26 @@
+baseURL: https://jo7ueb.github.io/neport/
+languageCode: ja-JP
+title: Neport
+defaultContentLanguage: ja
+defaultContentLanguageInSubdir: true
+enableRobotsTXT: true
+
+languages:
+  ja:
+    languageName: 日本語
+    languageCode: ja-JP
+    contentDir: content/ja
+    weight: 1
+  en:
+    languageName: English
+    languageCode: en-US
+    contentDir: content/en
+    weight: 2
+
+params:
+  description: タスク管理・稼働管理・日報を統合したNeport
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
