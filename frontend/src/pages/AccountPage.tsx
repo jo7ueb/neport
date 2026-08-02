@@ -8,6 +8,9 @@ import {
   updateProfile,
   getTimezone,
   updateTimezone,
+  listApiTokens,
+  createApiToken,
+  revokeApiToken,
   type LoginResponse,
 } from '../api/auth'
 import { getErrorMessage } from '../i18n/apiErrors'
@@ -131,6 +134,41 @@ export function AccountPage() {
     mutation.mutate({ current: currentPassword, next: newPassword })
   }
 
+  const { data: apiTokens = [], isLoading: tokensLoading } = useQuery({
+    queryKey: ['auth', 'tokens'],
+    queryFn: listApiTokens,
+  })
+  const [tokenName, setTokenName] = useState('')
+  const [tokenWrite, setTokenWrite] = useState(false)
+  const [newToken, setNewToken] = useState<string | null>(null)
+  const [tokenError, setTokenError] = useState<string | null>(null)
+  const tokenMutation = useMutation({
+    mutationFn: () => createApiToken(tokenName.trim(), tokenWrite ? ['read', 'write'] : ['read']),
+    onSuccess: (result) => {
+      setNewToken(result.token)
+      setTokenName('')
+      setTokenWrite(false)
+      setTokenError(null)
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'tokens'] })
+    },
+    onError: (err) => setTokenError(getErrorMessage(err, t, 'account.tokenCreateFailed')),
+  })
+  const revokeTokenMutation = useMutation({
+    mutationFn: revokeApiToken,
+    onSuccess: () => {
+      setTokenError(null)
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'tokens'] })
+    },
+    onError: (err) => setTokenError(getErrorMessage(err, t, 'account.tokenRevokeFailed')),
+  })
+
+  function handleTokenSubmit(e: FormEvent) {
+    e.preventDefault()
+    setNewToken(null)
+    if (!tokenName.trim()) return
+    tokenMutation.mutate()
+  }
+
   if (!user) return null
 
   return (
@@ -230,6 +268,89 @@ export function AccountPage() {
           ))}
         </select>
         <p className="mt-1 text-xs text-gray-500">{t('account.timezoneDescription')}</p>
+      </div>
+
+      <div className="mb-6 max-w-2xl rounded border bg-white p-4 text-sm">
+        <h2 className="mb-2 font-semibold text-gray-800">{t('account.apiTokens')}</h2>
+        <p className="mb-4 text-xs text-gray-600">{t('account.apiTokensDescription')}</p>
+        <form onSubmit={handleTokenSubmit} className="mb-4 space-y-3 rounded bg-gray-50 p-3">
+          <label className="block">
+            <span className="mb-1 block text-gray-600">{t('account.tokenName')}</span>
+            <input
+              type="text"
+              required
+              maxLength={100}
+              value={tokenName}
+              onChange={(e) => setTokenName(e.target.value)}
+              placeholder={t('account.tokenNamePlaceholder')}
+              className="w-full rounded border border-gray-300 px-2 py-1"
+            />
+          </label>
+          <label className="flex items-start gap-2">
+            <input type="checkbox" checked={tokenWrite} onChange={(e) => setTokenWrite(e.target.checked)} className="mt-0.5" />
+            <span>
+              <span className="block text-gray-700">{t('account.tokenWriteScope')}</span>
+              <span className="block text-xs text-gray-500">{t('account.tokenWriteScopeDescription')}</span>
+            </span>
+          </label>
+          {tokenError && <div className="rounded bg-red-50 px-3 py-2 text-red-700">{tokenError}</div>}
+          <button
+            type="submit"
+            disabled={tokenMutation.isPending || !tokenName.trim()}
+            className="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {t('account.createToken')}
+          </button>
+        </form>
+
+        {newToken && (
+          <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3">
+            <p className="font-semibold text-amber-900">{t('account.tokenCreated')}</p>
+            <p className="mt-1 text-xs text-amber-800">{t('account.tokenCreatedWarning')}</p>
+            <div className="mt-2 flex gap-2">
+              <code className="min-w-0 flex-1 break-all rounded bg-white px-2 py-1 text-xs">{newToken}</code>
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard?.writeText(newToken)}
+                className="shrink-0 rounded border border-amber-400 px-2 py-1 text-xs text-amber-900 hover:bg-amber-100"
+              >
+                {t('account.copyToken')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tokensLoading ? (
+          <p className="text-xs text-gray-500">{t('account.tokensLoading')}</p>
+        ) : apiTokens.length === 0 ? (
+          <p className="text-xs text-gray-500">{t('account.noTokens')}</p>
+        ) : (
+          <ul className="divide-y rounded border">
+            {apiTokens.map((token) => (
+              <li key={token.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-gray-800">{token.name}</p>
+                  <p className="text-xs text-gray-500">
+                    {token.scopes.join(', ')} · {new Date(token.created_at).toLocaleString()}
+                    {token.revoked_at ? ` · ${t('account.tokenRevoked')}` : ''}
+                  </p>
+                </div>
+                {!token.revoked_at && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(t('account.revokeTokenConfirm'))) revokeTokenMutation.mutate(token.id)
+                    }}
+                    disabled={revokeTokenMutation.isPending}
+                    className="shrink-0 text-xs text-red-600 hover:underline disabled:opacity-50"
+                  >
+                    {t('account.revokeToken')}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <form

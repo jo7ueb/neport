@@ -6,6 +6,35 @@ export interface LoginResponse {
   csrf_token: string
 }
 
+export interface ApiTokenInfo {
+  id: string
+  name: string
+  scopes: string[]
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+export interface CreatedApiToken {
+  token: string
+  token_info: ApiTokenInfo
+}
+
+export function listApiTokens(): Promise<ApiTokenInfo[]> {
+  return request<ApiTokenInfo[]>('/auth/tokens')
+}
+
+export function createApiToken(name: string, scopes: string[]): Promise<CreatedApiToken> {
+  return request<CreatedApiToken>('/auth/tokens', {
+    method: 'POST',
+    body: { name, scopes },
+  })
+}
+
+export function revokeApiToken(id: string): Promise<void> {
+  return request<void>(`/auth/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
 export function fetchMe(): Promise<LoginResponse> {
   return request<LoginResponse>('/auth/me')
 }
