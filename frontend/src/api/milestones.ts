@@ -8,6 +8,11 @@ export interface Milestone {
   due_date: string | null
   description: string | null
   created_at: string
+  total_story_points: number
+  done_story_points: number
+  remaining_story_points: number
+  remaining_estimated_hours: number
+  unestimated_ticket_count: number
 }
 
 export interface BurndownPoint {
@@ -20,6 +25,7 @@ export interface BurndownData {
   start_date: string | null
   due_date: string | null
   total_at_start: number
+  unestimated_ticket_count: number
   points: BurndownPoint[]
 }
 

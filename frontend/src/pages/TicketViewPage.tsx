@@ -182,6 +182,10 @@ export function TicketViewPage() {
                 <dd className="text-gray-800">{assigneeName(ticket.assignee_id)}</dd>
               </div>
               <div>
+                <dt className="text-gray-500">{t('ticket.detail.storyPointsLabel')}</dt>
+                <dd className="text-gray-800">{ticket.story_points ?? t('ticket.detail.storyPointsUnset')}</dd>
+              </div>
+              <div>
                 <dt className="text-gray-500">{t('ticket.detail.actualDurationLabel')}</dt>
                 <dd className="text-gray-800">
                   {actualDuration ? formatActualDuration(actualDuration.in_progress_seconds) : '-'}
@@ -255,7 +259,11 @@ export function TicketViewPage() {
         onClose={() => setShowCreateChild(false)}
         projectId={ticket.project_id}
         parentTicketId={tid}
-        onCreated={() => queryClient.invalidateQueries({ queryKey: ['ticket', tid, 'children'] })}
+        onCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ['ticket', tid, 'children'] })
+          queryClient.invalidateQueries({ queryKey: ['project', ticket.project_id, 'ticket-summary'] })
+          queryClient.invalidateQueries({ queryKey: ['milestones', ticket.project_id] })
+        }}
       />
     </div>
   )

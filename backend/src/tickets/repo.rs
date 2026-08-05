@@ -19,6 +19,7 @@ pub(crate) struct TicketRow {
     pub assignee_id: Option<i64>,
     pub title: String,
     pub description: Option<String>,
+    pub story_points: Option<i32>,
     pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,
     pub due_date: Option<NaiveDate>,
@@ -45,7 +46,7 @@ pub(crate) struct TicketRow {
 // reparenting_a_ticket_into_its_own_descendant_is_rejected_as_a_cycle - but
 // this is cheap insurance against a future bug or a row edited directly in
 // the DB).
-pub(crate) const TICKET_SELECT_COLUMNS: &str = "t.id, t.project_id, t.parent_ticket_id, t.reporter_id, t.assignee_id, t.title, t.description, t.start_date, t.end_date, t.due_date, t.milestone_id, t.created_at, t.updated_at, ws.id AS status_id, ws.workflow_id AS status_workflow_id, ws.key AS status_key, ws.label AS status_label, ws.category AS status_category, ws.position AS status_position, ws.is_initial AS status_is_initial, \
+pub(crate) const TICKET_SELECT_COLUMNS: &str = "t.id, t.project_id, t.parent_ticket_id, t.reporter_id, t.assignee_id, t.title, t.description, t.story_points, t.start_date, t.end_date, t.due_date, t.milestone_id, t.created_at, t.updated_at, ws.id AS status_id, ws.workflow_id AS status_workflow_id, ws.key AS status_key, ws.label AS status_label, ws.category AS status_category, ws.position AS status_position, ws.is_initial AS status_is_initial, \
     (WITH RECURSIVE descendants AS ( \
         SELECT id, ARRAY[t.id, id] AS path FROM tickets WHERE parent_ticket_id = t.id AND deleted_at IS NULL \
         UNION ALL \
@@ -63,7 +64,7 @@ pub(crate) const TICKET_FROM_JOIN: &str = "FROM tickets t JOIN workflow_statuses
 // Same columns as TICKET_SELECT_COLUMNS but unprefixed - for selecting from
 // a CTE (e.g. the recursive ticket_tree query) whose own output columns
 // already have these exact names, rather than from `tickets t`/`workflow_statuses ws` directly.
-pub(crate) const TICKET_SELECT_COLUMNS_BARE: &str = "id, project_id, parent_ticket_id, reporter_id, assignee_id, title, description, start_date, end_date, due_date, milestone_id, created_at, updated_at, status_id, status_workflow_id, status_key, status_label, status_category, status_position, status_is_initial, child_ticket_count, child_done_ticket_count";
+pub(crate) const TICKET_SELECT_COLUMNS_BARE: &str = "id, project_id, parent_ticket_id, reporter_id, assignee_id, title, description, story_points, start_date, end_date, due_date, milestone_id, created_at, updated_at, status_id, status_workflow_id, status_key, status_label, status_category, status_position, status_is_initial, child_ticket_count, child_done_ticket_count";
 
 pub(crate) fn row_to_ticket(row: TicketRow) -> Ticket {
     Ticket {
@@ -74,6 +75,7 @@ pub(crate) fn row_to_ticket(row: TicketRow) -> Ticket {
         assignee_id: row.assignee_id,
         title: row.title,
         description: row.description,
+        story_points: row.story_points,
         status: WorkflowStatus {
             id: row.status_id,
             workflow_id: row.status_workflow_id,
@@ -106,6 +108,7 @@ pub async fn create_ticket(
     assignee_id: Option<i64>,
     title: &str,
     description: Option<&str>,
+    story_points: Option<i32>,
     start_date: Option<NaiveDate>,
     end_date: Option<NaiveDate>,
     due_date: Option<NaiveDate>,
@@ -123,7 +126,7 @@ pub async fn create_ticket(
     // needs the joined workflow_statuses columns too - simplest is to insert,
     // then re-fetch the row through the shared select+join below.
     let inserted_id: (i64,) = sqlx::query_as(
-        "INSERT INTO tickets (project_id, parent_ticket_id, reporter_id, assignee_id, title, description, status_id, start_date, end_date, due_date, milestone_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()) RETURNING id"
+        "INSERT INTO tickets (project_id, parent_ticket_id, reporter_id, assignee_id, title, description, story_points, status_id, start_date, end_date, due_date, milestone_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()) RETURNING id"
     )
     .bind(project_id)
     .bind(parent_ticket_id)
@@ -131,6 +134,7 @@ pub async fn create_ticket(
     .bind(assignee_id)
     .bind(title)
     .bind(description)
+    .bind(story_points)
     .bind(status_id)
     .bind(start_date)
     .bind(end_date)
@@ -310,6 +314,7 @@ pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result
 
     let title = update.title.unwrap_or(current.title);
     let description = update.description.or(current.description);
+    let story_points = update.story_points.unwrap_or(current.story_points);
     let assignee_id = update.assignee_id.unwrap_or(current.assignee_id);
     let start_date = update.start_date.unwrap_or(current.start_date);
     let end_date = update.end_date.unwrap_or(current.end_date);
@@ -357,11 +362,12 @@ pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result
     };
 
     sqlx::query(
-        "UPDATE tickets SET title = $2, description = $3, status_id = $4, assignee_id = $5, start_date = $6, end_date = $7, due_date = $8, parent_ticket_id = $9, milestone_id = $10, updated_at = NOW() WHERE id = $1"
+        "UPDATE tickets SET title = $2, description = $3, story_points = $4, status_id = $5, assignee_id = $6, start_date = $7, end_date = $8, due_date = $9, parent_ticket_id = $10, milestone_id = $11, updated_at = NOW() WHERE id = $1"
     )
         .bind(id)
         .bind(&title)
         .bind(&description)
+        .bind(story_points)
         .bind(status_id)
         .bind(assignee_id)
         .bind(start_date)
@@ -420,6 +426,9 @@ pub fn build_ticket_update(payload: &serde_json::Value) -> Result<TicketUpdate> 
     Ok(TicketUpdate {
         title: payload.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()),
         description: payload.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        story_points: payload
+            .get("story_points")
+            .map(|v| if v.is_null() { None } else { v.as_i64().map(|n| n as i32) }),
         status_id: payload.get("status_id").and_then(|v| v.as_i64()),
         assignee_id: payload
             .get("assignee_id")
@@ -458,4 +467,15 @@ pub fn build_ticket_update(payload: &serde_json::Value) -> Result<TicketUpdate> 
             .get("milestone_id")
             .map(|v| if v.is_null() { None } else { v.as_i64() }),
     })
+}
+
+pub const ALLOWED_STORY_POINTS: [i32; 7] = [1, 2, 3, 5, 8, 13, 21];
+
+pub fn validate_story_points(story_points: Option<i32>) -> Result<()> {
+    if let Some(story_points) = story_points {
+        if !ALLOWED_STORY_POINTS.contains(&story_points) {
+            return Err(AppError::BadRequest("story_points must be one of 1, 2, 3, 5, 8, 13, 21".to_string()));
+        }
+    }
+    Ok(())
 }

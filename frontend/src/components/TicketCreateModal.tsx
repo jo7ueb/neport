@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { createTicket } from '../api/tickets'
 import { listMilestones } from '../api/milestones'
@@ -8,6 +8,8 @@ import { Modal } from './Modal'
 import { MarkdownField } from './MarkdownField'
 import { UserPicker } from './UserPicker'
 import { getErrorMessage } from '../i18n/apiErrors'
+import { STORY_POINT_OPTIONS } from '../lib/storyPoints'
+import { StoryPointGuide } from './StoryPointGuide'
 import type { User } from '../types/models'
 
 interface TicketCreateModalProps {
@@ -20,6 +22,7 @@ interface TicketCreateModalProps {
 
 export function TicketCreateModal({ open, onClose, projectId, parentTicketId, onCreated }: TicketCreateModalProps) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const { data: milestones } = useQuery({
     queryKey: ['milestones', projectId],
     queryFn: () => listMilestones(projectId),
@@ -29,6 +32,7 @@ export function TicketCreateModal({ open, onClose, projectId, parentTicketId, on
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [storyPoints, setStoryPoints] = useState<number | ''>('')
   const [assignee, setAssignee] = useState<User | null>(null)
   const [dueDate, setDueDate] = useState('')
   const [milestoneId, setMilestoneId] = useState<number | ''>('')
@@ -37,6 +41,7 @@ export function TicketCreateModal({ open, onClose, projectId, parentTicketId, on
   function resetForm() {
     setTitle('')
     setDescription('')
+    setStoryPoints('')
     setAssignee(null)
     setDueDate('')
     setMilestoneId('')
@@ -55,11 +60,14 @@ export function TicketCreateModal({ open, onClose, projectId, parentTicketId, on
         parent_ticket_id: parentTicketId,
         title,
         description: description || undefined,
+        story_points: storyPoints === '' ? null : storyPoints,
         assignee_id: assignee?.id ?? undefined,
         due_date: dueDate || undefined,
         milestone_id: milestoneId === '' ? undefined : milestoneId,
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId, 'ticket-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['milestones', projectId] })
       resetForm()
       onClose()
       onCreated()
@@ -97,6 +105,22 @@ export function TicketCreateModal({ open, onClose, projectId, parentTicketId, on
           <div className="flex-1">
             <label className="mb-1 block text-sm font-medium text-gray-700">{t('ticket.detail.assigneeLabel')}</label>
             <UserPicker value={assignee} onChange={setAssignee} candidates={assignableUsers ?? []} />
+          </div>
+          <div className="flex-1">
+            <label className="mb-1 block text-sm font-medium text-gray-700">{t('ticket.detail.storyPointsLabel')}</label>
+            <select
+              value={storyPoints}
+              onChange={(e) => setStoryPoints(e.target.value ? Number(e.target.value) : '')}
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            >
+              <option value="">{t('ticket.detail.storyPointsUnset')}</option>
+              {STORY_POINT_OPTIONS.map((point) => (
+                <option key={point} value={point}>
+                  {point}
+                </option>
+              ))}
+            </select>
+            <StoryPointGuide />
           </div>
           <div className="flex-1">
             <label className="mb-1 block text-sm font-medium text-gray-700">{t('ticket.detail.dueDateLabel')}</label>

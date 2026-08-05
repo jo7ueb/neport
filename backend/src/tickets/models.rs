@@ -12,6 +12,7 @@ pub struct Ticket {
     pub assignee_id: Option<i64>,
     pub title: String,
     pub description: Option<String>,
+    pub story_points: Option<i32>,
     pub status: WorkflowStatus,
     pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,
@@ -37,6 +38,7 @@ pub struct TicketNode {
 pub struct TicketUpdate {
     pub title: Option<String>,
     pub description: Option<String>,
+    pub story_points: Option<Option<i32>>,
     pub status_id: Option<i64>,
     pub assignee_id: Option<Option<i64>>,
     pub start_date: Option<Option<NaiveDate>>,

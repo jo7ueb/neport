@@ -28,6 +28,7 @@ pub struct CreateTicketRequest {
     pub assignee_id: Option<i64>,
     pub title: String,
     pub description: Option<String>,
+    pub story_points: Option<i32>,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     pub due_date: Option<String>,
@@ -121,6 +122,7 @@ pub async fn create_ticket(
     Json(payload): Json<CreateTicketRequest>,
 ) -> Result<(StatusCode, Json<Ticket>)> {
     access::check_project_access(&state.db, &user, payload.project_id, Access::Write).await?;
+    repo::validate_story_points(payload.story_points)?;
     let start_date = payload
         .start_date
         .as_ref()
@@ -142,6 +144,7 @@ pub async fn create_ticket(
         payload.assignee_id,
         &payload.title,
         payload.description.as_deref(),
+        payload.story_points,
         start_date,
         end_date,
         due_date,
@@ -172,6 +175,7 @@ pub async fn update_ticket(
 ) -> Result<Json<Ticket>> {
     let before = repo::get_ticket(&state.db, id).await?.ok_or(AppError::NotFound)?;
     access::check_project_access(&state.db, &user, before.project_id, Access::Write).await?;
+    repo::validate_story_points(payload.get("story_points").and_then(|v| v.as_i64()).map(|n| n as i32))?;
 
     // Moving a ticket into a "confirmed"-category status (closing it after
     // review) is a project manager's call, not the assignee's - "done" just
@@ -289,6 +293,17 @@ async fn record_update_activity(
         for mentioned_id in crate::mentions::newly_mentioned(old_text, new_text) {
             crate::notifications::repo::notify_mentioned_in_ticket(&state.db, mentioned_id, user_id, ticket_id).await?;
         }
+    }
+    if before.story_points != after.story_points {
+        activity_log::repo::record_field_change(
+            &state.db,
+            ticket_id,
+            user_id,
+            "story_points",
+            before.story_points.map(|n| n.to_string()),
+            after.story_points.map(|n| n.to_string()),
+            access_log_id,
+        ).await?;
     }
     if before.due_date != after.due_date {
         activity_log::repo::record_field_change(

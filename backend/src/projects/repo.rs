@@ -3,17 +3,27 @@ use sqlx::PgPool;
 use crate::error::{AppError, Result};
 use crate::project_members::{models::ProjectRole, repo as members_repo};
 use crate::workflows::repo as workflows_repo;
-use super::models::Project;
+use super::models::{Project, ProjectTicketSummary};
 
-type ProjectRow = (i64, String, Option<String>, i64, chrono::DateTime<chrono::Utc>, Option<chrono::DateTime<chrono::Utc>>, Option<i64>);
+type ProjectRow = (
+    i64,
+    String,
+    Option<String>,
+    i64,
+    f64,
+    chrono::DateTime<chrono::Utc>,
+    Option<chrono::DateTime<chrono::Utc>>,
+    Option<i64>,
+);
 
 fn row_to_project(row: ProjectRow) -> Project {
-    let (id, name, description, workflow_id, created_at, archived_at, created_by_id) = row;
+    let (id, name, description, workflow_id, hours_per_story_point, created_at, archived_at, created_by_id) = row;
     Project {
         id,
         name,
         description,
         workflow_id,
+        hours_per_story_point,
         created_at,
         archived_at,
         created_by_id,
@@ -34,7 +44,7 @@ pub async fn create_project(
     };
 
     let result = sqlx::query_as::<_, ProjectRow>(
-        "INSERT INTO projects (name, description, workflow_id, created_by_id) VALUES ($1, $2, $3, $4) RETURNING id, name, description, workflow_id, created_at, archived_at, created_by_id"
+        "INSERT INTO projects (name, description, workflow_id, created_by_id) VALUES ($1, $2, $3, $4) RETURNING id, name, description, workflow_id, hours_per_story_point, created_at, archived_at, created_by_id"
     )
     .bind(name)
     .bind(description)
@@ -73,7 +83,7 @@ pub async fn create_project(
 
 pub async fn get_project(db: &PgPool, id: i64) -> Result<Option<Project>> {
     sqlx::query_as::<_, ProjectRow>(
-        "SELECT id, name, description, workflow_id, created_at, archived_at, created_by_id FROM projects WHERE id = $1"
+        "SELECT id, name, description, workflow_id, hours_per_story_point, created_at, archived_at, created_by_id FROM projects WHERE id = $1"
     )
     .bind(id)
     .fetch_optional(db)
@@ -100,7 +110,7 @@ pub async fn list_projects(
 ) -> Result<Vec<Project>> {
     let archived_clause = if archived { "AND p.archived_at IS NOT NULL" } else { "AND p.archived_at IS NULL" };
     let query = format!(
-        "SELECT p.id, p.name, p.description, p.workflow_id, p.created_at, p.archived_at, p.created_by_id FROM projects p \
+        "SELECT p.id, p.name, p.description, p.workflow_id, p.hours_per_story_point, p.created_at, p.archived_at, p.created_by_id FROM projects p \
          WHERE {VISIBILITY_CLAUSE} {archived_clause} ORDER BY p.created_at DESC LIMIT $3 OFFSET $4"
     );
 
@@ -145,17 +155,48 @@ pub async fn update_project(
     id: i64,
     name: Option<&str>,
     description: Option<&str>,
+    hours_per_story_point: Option<f64>,
 ) -> Result<Option<Project>> {
     sqlx::query_as::<_, ProjectRow>(
-        "UPDATE projects SET name = COALESCE($2, name), description = COALESCE($3, description) WHERE id = $1 RETURNING id, name, description, workflow_id, created_at, archived_at, created_by_id"
+        "UPDATE projects SET name = COALESCE($2, name), description = COALESCE($3, description), hours_per_story_point = COALESCE($4, hours_per_story_point) WHERE id = $1 RETURNING id, name, description, workflow_id, hours_per_story_point, created_at, archived_at, created_by_id"
     )
     .bind(id)
     .bind(name)
     .bind(description)
+    .bind(hours_per_story_point)
     .fetch_optional(db)
     .await
     .map_err(AppError::Database)
     .map(|row| row.map(row_to_project))
+}
+
+pub async fn get_ticket_summary(db: &PgPool, project_id: i64) -> Result<ProjectTicketSummary> {
+    let row: (Option<i64>, f64, i64) = sqlx::query_as(
+        "SELECT
+            SUM(t.story_points)::bigint,
+            COALESCE(SUM(t.story_points)::double precision * p.hours_per_story_point, 0),
+            COUNT(*) FILTER (WHERE t.story_points IS NULL)::bigint
+         FROM projects p
+         LEFT JOIN tickets t
+           ON t.project_id = p.id
+          AND t.deleted_at IS NULL
+          AND t.status_id IN (
+              SELECT id FROM workflow_statuses WHERE category NOT IN ('done', 'confirmed')
+          )
+         WHERE p.id = $1
+         GROUP BY p.id, p.hours_per_story_point"
+    )
+    .bind(project_id)
+    .fetch_optional(db)
+    .await
+    .map_err(AppError::Database)?
+    .ok_or(AppError::NotFound)?;
+
+    Ok(ProjectTicketSummary {
+        remaining_story_points: row.0.unwrap_or(0),
+        remaining_estimated_hours: row.1,
+        unestimated_ticket_count: row.2,
+    })
 }
 
 pub async fn archive_project(db: &PgPool, id: i64) -> Result<()> {

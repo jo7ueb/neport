@@ -79,7 +79,7 @@ export function BurndownChart({ points, totalAtStart }: { points: BurndownPoint[
       <div className="mt-2 flex items-center gap-4 text-xs text-gray-600">
         <span className="flex items-center gap-1">
           <span className="inline-block h-0.5 w-4 bg-blue-600" />
-          {t('burndown.remaining')}
+          {t('burndown.remainingStoryPoints')}
         </span>
         {idealPath && (
           <span className="flex items-center gap-1">

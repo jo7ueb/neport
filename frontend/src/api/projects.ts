@@ -1,5 +1,5 @@
 import { request } from './client'
-import type { Paginated, Project, ProjectRole, WorkflowDetail } from '../types/models'
+import type { Paginated, Project, ProjectRole, ProjectTicketSummary, WorkflowDetail } from '../types/models'
 
 export interface InitialMemberInput {
   user_id: number
@@ -46,12 +46,16 @@ export function getProjectWorkflow(id: number): Promise<WorkflowDetail> {
 
 export function updateProject(
   id: number,
-  fields: { name?: string; description?: string }
+  fields: { name?: string; description?: string; hours_per_story_point?: number }
 ): Promise<Project> {
   return request<Project>(`/projects/${id}`, {
     method: 'PATCH',
     body: fields,
   })
+}
+
+export function getProjectTicketSummary(id: number): Promise<ProjectTicketSummary> {
+  return request<ProjectTicketSummary>(`/projects/${id}/tickets/summary`)
 }
 
 export function archiveProject(id: number): Promise<void> {

@@ -41,6 +41,7 @@ export function TicketRow({ ticket, depth = 0 }: { ticket: Ticket; depth?: numbe
         <Link to={`/tickets/${ticket.id}`} className="flex-1 text-blue-600 hover:underline">
           #{ticket.id} {ticket.title}
         </Link>
+        <span className="text-gray-500">{ticket.story_points ?? '-'}</span>
         <TicketProgress done={ticket.child_done_ticket_count} total={ticket.child_ticket_count} />
         <span className="text-gray-500">{statusLabel(t, ticket.status)}</span>
         {ticket.due_date && (

@@ -6,6 +6,7 @@ import { updateProject } from '../api/projects'
 import { useProjectRole } from '../lib/useProjectRole'
 import { getErrorMessage } from '../i18n/apiErrors'
 import { Modal } from './Modal'
+import { formatEstimatedHours } from '../lib/storyPoints'
 import type { Project } from '../types/models'
 
 export function ProjectNav({ project }: { project: Project | undefined }) {
@@ -18,20 +19,29 @@ export function ProjectNav({ project }: { project: Project | undefined }) {
   const [showEdit, setShowEdit] = useState(false)
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editHoursPerPoint, setEditHoursPerPoint] = useState('1')
   const [editError, setEditError] = useState<string | null>(null)
 
   function openEdit() {
     setEditName(project?.name ?? '')
     setEditDescription(project?.description ?? '')
+    setEditHoursPerPoint(String(project?.hours_per_story_point ?? 1))
     setEditError(null)
     setShowEdit(true)
   }
 
   const updateProjectMutation = useMutation({
-    mutationFn: () => updateProject(projectId!, { name: editName, description: editDescription }),
+    mutationFn: () =>
+      updateProject(projectId!, {
+        name: editName,
+        description: editDescription,
+        hours_per_story_point: Number(editHoursPerPoint),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', projectId] })
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['project', projectId, 'ticket-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['milestones', projectId] })
       setShowEdit(false)
     },
     onError: (err) => setEditError(getErrorMessage(err, t, 'projectMembers.editFailed')),
@@ -39,8 +49,14 @@ export function ProjectNav({ project }: { project: Project | undefined }) {
 
   function handleEditSubmit(e: FormEvent) {
     e.preventDefault()
+    if (!Number.isFinite(Number(editHoursPerPoint)) || Number(editHoursPerPoint) <= 0) {
+      setEditError(t('projectMembers.invalidHoursPerPoint'))
+      return
+    }
     updateProjectMutation.mutate()
   }
+
+  const velocityDisplay = project ? formatEstimatedHours(project.hours_per_story_point) : { hours: 1, minutes: 0 }
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `rounded px-3 py-1.5 text-sm ${isActive ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`
@@ -65,11 +81,21 @@ export function ProjectNav({ project }: { project: Project | undefined }) {
             {t('projectNav.members')}
           </NavLink>
         </div>
-        {canManage && !archived && (
-          <button onClick={openEdit} className="px-2 text-sm text-blue-600 hover:underline">
-            {t('projectMembers.editProject')}
-          </button>
-        )}
+        <div className="flex items-center gap-4">
+          {project && (
+            <span className="text-xs text-gray-500">
+              {t('projectMembers.hoursPerPointSummary', {
+                hours: velocityDisplay.hours,
+                minutes: velocityDisplay.minutes,
+              })}
+            </span>
+          )}
+          {canManage && !archived && (
+            <button onClick={openEdit} className="px-2 text-sm text-blue-600 hover:underline">
+              {t('projectMembers.editProject')}
+            </button>
+          )}
+        </div>
       </nav>
       {archived && (
         <div className="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -95,6 +121,18 @@ export function ProjectNav({ project }: { project: Project | undefined }) {
             onChange={(e) => setEditDescription(e.target.value)}
             className="w-full rounded border border-gray-300 px-3 py-2"
           />
+          <label className="block text-sm">
+            <span className="mb-1 block text-gray-700">{t('projectMembers.hoursPerPointLabel')}</span>
+            <input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={editHoursPerPoint}
+              onChange={(e) => setEditHoursPerPoint(e.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-gray-500">{t('projectMembers.hoursPerPointHelp')}</span>
+          </label>
           <div className="flex justify-end gap-2">
             <button
               type="button"

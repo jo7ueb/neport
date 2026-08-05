@@ -5,10 +5,38 @@ use std::collections::HashMap;
 use crate::error::{AppError, Result};
 use super::models::{BurndownData, BurndownPoint, Milestone};
 
-type MilestoneRow = (i64, i64, String, Option<NaiveDate>, Option<NaiveDate>, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>);
+type MilestoneRow = (
+    i64,
+    i64,
+    String,
+    Option<NaiveDate>,
+    Option<NaiveDate>,
+    Option<String>,
+    chrono::DateTime<chrono::Utc>,
+    Option<i64>,
+    i64,
+    i64,
+    i64,
+    f64,
+    i64,
+);
 
 fn row_to_milestone(row: MilestoneRow) -> Milestone {
-    let (id, project_id, name, start_date, due_date, description, created_at, created_by_id) = row;
+    let (
+        id,
+        project_id,
+        name,
+        start_date,
+        due_date,
+        description,
+        created_at,
+        created_by_id,
+        total_story_points,
+        done_story_points,
+        remaining_story_points,
+        remaining_estimated_hours,
+        unestimated_ticket_count,
+    ) = row;
     Milestone {
         id,
         project_id,
@@ -18,10 +46,38 @@ fn row_to_milestone(row: MilestoneRow) -> Milestone {
         description,
         created_at,
         created_by_id,
+        total_story_points,
+        done_story_points,
+        remaining_story_points,
+        remaining_estimated_hours,
+        unestimated_ticket_count,
     }
 }
 
-const MILESTONE_COLUMNS: &str = "id, project_id, name, start_date, due_date, description, created_at, created_by_id";
+const MILESTONE_COLUMNS: &str = "m.id, m.project_id, m.name, m.start_date, m.due_date, m.description, m.created_at, m.created_by_id";
+const MILESTONE_SUMMARY_COLUMNS: &str = "COALESCE(SUM(t.story_points)::bigint, 0) AS total_story_points,
+    COALESCE(SUM(t.story_points) FILTER (WHERE ws.category IN ('done', 'confirmed'))::bigint, 0) AS done_story_points,
+    COALESCE(SUM(t.story_points) FILTER (WHERE ws.category NOT IN ('done', 'confirmed'))::bigint, 0) AS remaining_story_points,
+    COALESCE(SUM(t.story_points) FILTER (WHERE ws.category NOT IN ('done', 'confirmed'))::double precision * p.hours_per_story_point, 0) AS remaining_estimated_hours,
+    COUNT(*) FILTER (WHERE t.id IS NOT NULL AND t.story_points IS NULL AND ws.category NOT IN ('done', 'confirmed'))::bigint AS unestimated_ticket_count";
+
+async fn fetch_milestone(db: &PgPool, where_clause: &str, bind_id: i64) -> Result<Option<Milestone>> {
+    let sql = format!(
+        "SELECT {MILESTONE_COLUMNS}, {MILESTONE_SUMMARY_COLUMNS}
+         FROM milestones m
+         JOIN projects p ON p.id = m.project_id
+         LEFT JOIN tickets t ON t.milestone_id = m.id AND t.deleted_at IS NULL
+         LEFT JOIN workflow_statuses ws ON ws.id = t.status_id
+         WHERE {where_clause}
+         GROUP BY m.id, p.hours_per_story_point"
+    );
+    sqlx::query_as::<_, MilestoneRow>(&sql)
+        .bind(bind_id)
+        .fetch_optional(db)
+        .await
+        .map_err(AppError::Database)
+        .map(|row| row.map(row_to_milestone))
+}
 
 pub async fn create_milestone(
     db: &PgPool,
@@ -32,8 +88,8 @@ pub async fn create_milestone(
     description: Option<&str>,
     created_by_id: Option<i64>,
 ) -> Result<Milestone> {
-    sqlx::query_as::<_, MilestoneRow>(
-        &format!("INSERT INTO milestones (project_id, name, start_date, due_date, description, created_at, created_by_id) VALUES ($1, $2, $3, $4, $5, NOW(), $6) RETURNING {MILESTONE_COLUMNS}")
+    let inserted_id: (i64,) = sqlx::query_as(
+        "INSERT INTO milestones (project_id, name, start_date, due_date, description, created_at, created_by_id) VALUES ($1, $2, $3, $4, $5, NOW(), $6) RETURNING id"
     )
     .bind(project_id)
     .bind(name)
@@ -43,30 +99,32 @@ pub async fn create_milestone(
     .bind(created_by_id)
     .fetch_one(db)
     .await
-    .map_err(AppError::Database)
-    .map(row_to_milestone)
+    .map_err(AppError::Database)?;
+
+    get_milestone(db, inserted_id.0).await?.ok_or(AppError::InternalServerError)
 }
 
 pub async fn get_milestone(db: &PgPool, id: i64) -> Result<Option<Milestone>> {
-    sqlx::query_as::<_, MilestoneRow>(
-        &format!("SELECT {MILESTONE_COLUMNS} FROM milestones WHERE id = $1 AND deleted_at IS NULL")
-    )
-    .bind(id)
-    .fetch_optional(db)
-    .await
-    .map_err(AppError::Database)
-    .map(|row| row.map(row_to_milestone))
+    fetch_milestone(db, "m.id = $1 AND m.deleted_at IS NULL", id).await
 }
 
 pub async fn list_milestones_for_project(db: &PgPool, project_id: i64) -> Result<Vec<Milestone>> {
-    sqlx::query_as::<_, MilestoneRow>(
-        &format!("SELECT {MILESTONE_COLUMNS} FROM milestones WHERE project_id = $1 AND deleted_at IS NULL ORDER BY due_date ASC NULLS LAST, created_at ASC")
-    )
-    .bind(project_id)
-    .fetch_all(db)
-    .await
-    .map_err(AppError::Database)
-    .map(|rows| rows.into_iter().map(row_to_milestone).collect())
+    let sql = format!(
+        "SELECT {MILESTONE_COLUMNS}, {MILESTONE_SUMMARY_COLUMNS}
+         FROM milestones m
+         JOIN projects p ON p.id = m.project_id
+         LEFT JOIN tickets t ON t.milestone_id = m.id AND t.deleted_at IS NULL
+         LEFT JOIN workflow_statuses ws ON ws.id = t.status_id
+         WHERE m.project_id = $1 AND m.deleted_at IS NULL
+         GROUP BY m.id, p.hours_per_story_point
+         ORDER BY m.due_date ASC NULLS LAST, m.created_at ASC"
+    );
+    sqlx::query_as::<_, MilestoneRow>(&sql)
+        .bind(project_id)
+        .fetch_all(db)
+        .await
+        .map_err(AppError::Database)
+        .map(|rows| rows.into_iter().map(row_to_milestone).collect())
 }
 
 pub async fn update_milestone(
@@ -77,8 +135,8 @@ pub async fn update_milestone(
     due_date: Option<NaiveDate>,
     description: Option<&str>,
 ) -> Result<Option<Milestone>> {
-    sqlx::query_as::<_, MilestoneRow>(
-        &format!("UPDATE milestones SET name = COALESCE($2, name), start_date = COALESCE($3, start_date), due_date = COALESCE($4, due_date), description = COALESCE($5, description) WHERE id = $1 AND deleted_at IS NULL RETURNING {MILESTONE_COLUMNS}")
+    let updated_id: Option<(i64,)> = sqlx::query_as(
+        "UPDATE milestones SET name = COALESCE($2, name), start_date = COALESCE($3, start_date), due_date = COALESCE($4, due_date), description = COALESCE($5, description) WHERE id = $1 AND deleted_at IS NULL RETURNING id"
     )
     .bind(id)
     .bind(name)
@@ -87,8 +145,12 @@ pub async fn update_milestone(
     .bind(description)
     .fetch_optional(db)
     .await
-    .map_err(AppError::Database)
-    .map(|row| row.map(row_to_milestone))
+    .map_err(AppError::Database)?;
+
+    match updated_id {
+        Some((id,)) => get_milestone(db, id).await,
+        None => Ok(None),
+    }
 }
 
 pub async fn delete_milestone(db: &PgPool, id: i64, deleted_by_id: Option<i64>) -> Result<()> {
@@ -101,11 +163,6 @@ pub async fn delete_milestone(db: &PgPool, id: i64, deleted_by_id: Option<i64>) 
     Ok(())
 }
 
-// Reconstructs, day by day, how many of the milestone's tickets were not yet
-// "done" as of that day - by replaying ticket_activity_log's status_change
-// events rather than relying on any snapshot table. Returns None if the
-// milestone doesn't exist or hasn't had a start_date set yet (there's no
-// meaningful x-axis origin without one).
 pub async fn burndown_data(db: &PgPool, milestone_id: i64) -> Result<Option<BurndownData>> {
     let milestone = match get_milestone(db, milestone_id).await? {
         Some(m) => m,
@@ -115,12 +172,18 @@ pub async fn burndown_data(db: &PgPool, milestone_id: i64) -> Result<Option<Burn
     let start_date = match milestone.start_date {
         Some(d) => d,
         None => {
-            return Ok(Some(BurndownData { start_date: None, due_date, total_at_start: 0, points: Vec::new() }));
+            return Ok(Some(BurndownData {
+                start_date: None,
+                due_date,
+                total_at_start: 0,
+                unestimated_ticket_count: milestone.unestimated_ticket_count,
+                points: Vec::new(),
+            }));
         }
     };
 
-    let tickets: Vec<(i64, chrono::DateTime<chrono::Utc>, i64)> = sqlx::query_as(
-        "SELECT id, created_at, status_id FROM tickets WHERE milestone_id = $1 AND deleted_at IS NULL"
+    let tickets: Vec<(i64, chrono::DateTime<chrono::Utc>, i64, Option<i32>)> = sqlx::query_as(
+        "SELECT id, created_at, status_id, story_points FROM tickets WHERE milestone_id = $1 AND deleted_at IS NULL"
     )
     .bind(milestone_id)
     .fetch_all(db)
@@ -128,10 +191,16 @@ pub async fn burndown_data(db: &PgPool, milestone_id: i64) -> Result<Option<Burn
     .map_err(AppError::Database)?;
 
     if tickets.is_empty() {
-        return Ok(Some(BurndownData { start_date: Some(start_date), due_date, total_at_start: 0, points: Vec::new() }));
+        return Ok(Some(BurndownData {
+            start_date: Some(start_date),
+            due_date,
+            total_at_start: 0,
+            unestimated_ticket_count: 0,
+            points: Vec::new(),
+        }));
     }
 
-    let ticket_ids: Vec<i64> = tickets.iter().map(|(id, _, _)| *id).collect();
+    let ticket_ids: Vec<i64> = tickets.iter().map(|(id, _, _, _)| *id).collect();
 
     let events: Vec<(i64, chrono::DateTime<chrono::Utc>, i64, i64)> = sqlx::query_as(
         "SELECT ticket_id, occurred_at, from_status_id, to_status_id FROM ticket_activity_log
@@ -144,7 +213,7 @@ pub async fn burndown_data(db: &PgPool, milestone_id: i64) -> Result<Option<Burn
     .await
     .map_err(AppError::Database)?;
 
-    let mut status_ids: std::collections::HashSet<i64> = tickets.iter().map(|(_, _, s)| *s).collect();
+    let mut status_ids: std::collections::HashSet<i64> = tickets.iter().map(|(_, _, s, _)| *s).collect();
     status_ids.extend(events.iter().flat_map(|(_, _, from, to)| [*from, *to]));
     let status_ids: Vec<i64> = status_ids.into_iter().collect();
 
@@ -176,17 +245,16 @@ pub async fn burndown_data(db: &PgPool, milestone_id: i64) -> Result<Option<Burn
         let cutoff = day.and_hms_opt(23, 59, 59).unwrap().and_utc();
 
         let mut remaining = 0i64;
-        let mut existed = 0i64;
-        for (ticket_id, created_at, current_status_id) in &tickets {
+        let mut existed_story_points = 0i64;
+        for (ticket_id, created_at, current_status_id, story_points) in &tickets {
             if *created_at > cutoff {
                 continue;
             }
-            existed += 1;
+            let Some(story_points) = story_points else {
+                continue;
+            };
+            existed_story_points += i64::from(*story_points);
 
-            // Status as of `cutoff`: start from what the ticket was created
-            // with (the first event's from_status_id, or its current status
-            // if it has never changed), then apply every event that had
-            // already happened by `cutoff`.
             let mut status_id = match events_by_ticket.get(ticket_id).and_then(|evts| evts.first()) {
                 Some((_, from_status_id, _)) => *from_status_id,
                 None => *current_status_id,
@@ -203,12 +271,12 @@ pub async fn burndown_data(db: &PgPool, milestone_id: i64) -> Result<Option<Burn
 
             let category = category_map.get(&status_id).map(String::as_str).unwrap_or("todo");
             if category != "done" && category != "confirmed" {
-                remaining += 1;
+                remaining += i64::from(*story_points);
             }
         }
 
         if day == start_date {
-            total_at_start = existed;
+            total_at_start = existed_story_points;
         }
 
         let ideal = total_days.map(|total| {
@@ -225,5 +293,11 @@ pub async fn burndown_data(db: &PgPool, milestone_id: i64) -> Result<Option<Burn
         day = day.succ_opt().unwrap();
     }
 
-    Ok(Some(BurndownData { start_date: Some(start_date), due_date, total_at_start, points }))
+    Ok(Some(BurndownData {
+        start_date: Some(start_date),
+        due_date,
+        total_at_start,
+        unestimated_ticket_count: milestone.unestimated_ticket_count,
+        points,
+    }))
 }

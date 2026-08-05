@@ -10,6 +10,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(handlers::list_projects).post(handlers::create_project))
         .route("/:id", get(handlers::get_project).patch(handlers::update_project))
+        .route("/:id/tickets/summary", get(handlers::get_ticket_summary))
         .route("/:id/archive", post(handlers::archive_project))
         .route("/:id/unarchive", post(handlers::unarchive_project))
         .route("/:id/workflow", get(handlers::get_project_workflow))

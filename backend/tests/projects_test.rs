@@ -265,6 +265,64 @@ async fn duplicate_project_name_is_rejected() {
 }
 
 #[tokio::test]
+async fn project_hours_per_story_point_can_be_updated_and_summary_uses_it() {
+    let user = TestUser::create().await;
+    let project = user.create_project(&unique("project-velocity")).await;
+    let project_id = as_i64(&project, "id");
+    assert_eq!(project["hours_per_story_point"], 1.0);
+
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/projects/{}", base_url(), project_id))
+        .json(&json!({ "hours_per_story_point": 2.5 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let updated: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(updated["hours_per_story_point"], 2.5);
+
+    let ticket = user.create_ticket(project_id, None, "Estimated").await;
+    let ticket_id = as_i64(&ticket, "id");
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), ticket_id))
+        .json(&json!({ "story_points": 8 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let resp = user
+        .client
+        .get(format!("{}/api/v1/projects/{}/tickets/summary", base_url(), project_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let summary: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(summary["remaining_story_points"], 8);
+    assert_eq!(summary["remaining_estimated_hours"], 20.0);
+    assert_eq!(summary["unestimated_ticket_count"], 0);
+}
+
+#[tokio::test]
+async fn invalid_project_hours_per_story_point_is_rejected() {
+    let user = TestUser::create().await;
+    let project = user.create_project(&unique("project-invalid-velocity")).await;
+    let project_id = as_i64(&project, "id");
+
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/projects/{}", base_url(), project_id))
+        .json(&json!({ "hours_per_story_point": 0 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+}
+
+#[tokio::test]
 async fn only_admins_can_create_projects() {
     let user = TestUser::create().await;
 

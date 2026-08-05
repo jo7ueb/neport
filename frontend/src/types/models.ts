@@ -38,6 +38,7 @@ export interface Project {
   name: string
   description: string | null
   workflow_id: number
+  hours_per_story_point: number
   created_at: string
   archived_at: string | null
 }
@@ -92,6 +93,7 @@ export interface Ticket {
   assignee_id: number | null
   title: string
   description: string | null
+  story_points: number | null
   status: WorkflowStatus
   start_date: string | null
   end_date: string | null
@@ -256,6 +258,12 @@ export interface SystemSettings {
   katex_enabled: boolean
   default_timezone: string
   maintenance_mode: boolean
+}
+
+export interface ProjectTicketSummary {
+  remaining_story_points: number
+  remaining_estimated_hours: number
+  unestimated_ticket_count: number
 }
 
 export interface Paginated<T> {

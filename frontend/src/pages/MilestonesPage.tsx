@@ -4,11 +4,10 @@ import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { getProject } from '../api/projects'
 import { createMilestone, deleteMilestone, listMilestones, updateMilestone, type Milestone } from '../api/milestones'
-import { listAllProjectTickets } from '../api/tickets'
 import { ProjectNav } from '../components/ProjectNav'
 import { Modal } from '../components/Modal'
 import { getErrorMessage } from '../i18n/apiErrors'
-import type { Ticket } from '../types/models'
+import { formatEstimatedHours } from '../lib/storyPoints'
 
 function daysUntil(dueDate: string): number {
   const today = new Date().toISOString().slice(0, 10)
@@ -16,14 +15,12 @@ function daysUntil(dueDate: string): number {
   return Math.round((Date.parse(dueDate) - Date.parse(today)) / msPerDay)
 }
 
-function MilestoneProgress({ milestone, tickets }: { milestone: Milestone; tickets: Ticket[] }) {
+function MilestoneProgress({ milestone }: { milestone: Milestone }) {
   const { t } = useTranslation()
-  const ticketsForMilestone = tickets.filter((tkt) => tkt.milestone_id === milestone.id)
-  const total = ticketsForMilestone.length
-  const done = ticketsForMilestone.filter(
-    (tkt) => tkt.status.category === 'done' || tkt.status.category === 'confirmed'
-  ).length
+  const total = milestone.total_story_points
+  const done = milestone.done_story_points
   const percent = total === 0 ? 0 : Math.round((done / total) * 100)
+  const remainingEstimate = formatEstimatedHours(milestone.remaining_estimated_hours)
 
   let dueText: { key: 'milestone.dueToday' | 'milestone.daysRemaining' | 'milestone.overdueDays'; days: number } | null = null
   if (milestone.due_date) {
@@ -36,7 +33,7 @@ function MilestoneProgress({ milestone, tickets }: { milestone: Milestone; ticke
   return (
     <div className="mt-1 flex items-center gap-3 text-sm">
       {total === 0 ? (
-        <span className="text-gray-400">{t('milestone.noTickets')}</span>
+        <span className="text-gray-400">{t('milestone.noStoryPoints')}</span>
       ) : (
         <>
           <div className="h-2 w-32 overflow-hidden rounded bg-gray-200">
@@ -44,6 +41,17 @@ function MilestoneProgress({ milestone, tickets }: { milestone: Milestone; ticke
           </div>
           <span className="text-gray-600">{t('milestone.progress', { done, total })}</span>
         </>
+      )}
+      <span className="text-gray-500">
+        {t('milestone.remainingStoryPoints', { points: milestone.remaining_story_points })}
+      </span>
+      <span className="text-gray-500">
+        {t('milestone.remainingEstimatedHours', remainingEstimate)}
+      </span>
+      {milestone.unestimated_ticket_count > 0 && (
+        <span className="font-medium text-amber-700">
+          {t('milestone.unestimatedCount', { count: milestone.unestimated_ticket_count })}
+        </span>
       )}
       {dueText && (
         <span className={dueText.key === 'milestone.overdueDays' ? 'font-semibold text-red-600' : 'text-gray-500'}>
@@ -133,10 +141,6 @@ export function MilestonesPage() {
   const { data: milestones, isLoading } = useQuery({
     queryKey: ['milestones', pid],
     queryFn: () => listMilestones(pid),
-  })
-  const { data: tickets } = useQuery({
-    queryKey: ['tickets', pid, 'all'],
-    queryFn: () => listAllProjectTickets(pid),
   })
 
   const [showCreate, setShowCreate] = useState(false)
@@ -302,7 +306,7 @@ export function MilestonesPage() {
                   {m.start_date && <div className="text-sm text-gray-500">{t('milestone.startsOn', { date: m.start_date })}</div>}
                   {m.due_date && <div className="text-sm text-gray-500">{t('milestone.due', { date: m.due_date })}</div>}
                   {m.description && <div className="text-sm text-gray-500">{m.description}</div>}
-                  <MilestoneProgress milestone={m} tickets={tickets ?? []} />
+                  <MilestoneProgress milestone={m} />
                 </div>
                 <div className="space-x-3">
                   <Link to={`/projects/${pid}/milestones/${m.id}/burndown`} className="text-sm text-blue-600 hover:underline">

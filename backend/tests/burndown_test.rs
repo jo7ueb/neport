@@ -4,7 +4,7 @@ use common::{as_i64, base_url, unique, TestUser};
 use serde_json::json;
 
 #[tokio::test]
-async fn burndown_reflects_actual_remaining_ticket_count_after_status_changes() {
+async fn burndown_reflects_actual_remaining_story_points_after_status_changes() {
     let user = TestUser::create().await;
     let project = user.create_project(&unique("burndown-project")).await;
     let project_id = as_i64(&project, "id");
@@ -28,18 +28,18 @@ async fn burndown_reflects_actual_remaining_ticket_count_after_status_changes() 
     let milestone_id = as_i64(&milestone, "id");
     assert_eq!(milestone["start_date"], today.to_string());
 
-    // Three tickets in the milestone: one fully done, one in progress, one
-    // untouched - so "remaining" should end up at 2.
+    // Three estimated tickets in the milestone: one fully done, one in
+    // progress, one untouched - so "remaining" should end up at 13SP.
     let done_ticket = user.create_ticket(project_id, None, "will be done").await;
     let in_progress_ticket = user.create_ticket(project_id, None, "will be in progress").await;
     let untouched_ticket = user.create_ticket(project_id, None, "left alone").await;
 
-    for ticket in [&done_ticket, &in_progress_ticket, &untouched_ticket] {
+    for (ticket, story_points) in [(&done_ticket, 3), (&in_progress_ticket, 5), (&untouched_ticket, 8)] {
         let ticket_id = as_i64(ticket, "id");
         let resp = user
             .client
             .patch(format!("{}/api/v1/tickets/{}", base_url(), ticket_id))
-            .json(&json!({ "milestone_id": milestone_id }))
+            .json(&json!({ "milestone_id": milestone_id, "story_points": story_points }))
             .send()
             .await
             .unwrap();
@@ -92,15 +92,16 @@ async fn burndown_reflects_actual_remaining_ticket_count_after_status_changes() 
     let data: serde_json::Value = resp.json().await.unwrap();
 
     assert_eq!(data["start_date"], today.to_string());
-    assert_eq!(data["total_at_start"], 3, "all 3 tickets already existed at the milestone's start date");
+    assert_eq!(data["total_at_start"], 16, "all estimated tickets already existed at the milestone's start date");
+    assert_eq!(data["unestimated_ticket_count"], 0);
 
     let points = data["points"].as_array().unwrap();
     assert!(!points.is_empty(), "expected at least today's point to be present");
     let last_point = points.last().unwrap();
     assert_eq!(last_point["date"], today.to_string());
     assert_eq!(
-        last_point["remaining"], 2,
-        "only the untouched and in-progress tickets should still count as remaining"
+        last_point["remaining"], 13,
+        "only the untouched and in-progress tickets should still count as remaining story points"
     );
 }
 

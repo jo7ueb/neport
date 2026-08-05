@@ -11,6 +11,8 @@ import { MarkdownField } from '../components/MarkdownField'
 import { TicketPicker } from '../components/TicketPicker'
 import { getErrorMessage } from '../i18n/apiErrors'
 import { statusLabel } from '../i18n/statusLabel'
+import { STORY_POINT_OPTIONS } from '../lib/storyPoints'
+import { StoryPointGuide } from '../components/StoryPointGuide'
 import type { Ticket, WorkflowStatus } from '../types/models'
 
 export function TicketEditPage() {
@@ -46,6 +48,7 @@ export function TicketEditPage() {
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [storyPoints, setStoryPoints] = useState<number | ''>('')
   const [statusId, setStatusId] = useState<number | ''>('')
   const [assigneeId, setAssigneeId] = useState<number | ''>('')
   const [dueDate, setDueDate] = useState('')
@@ -57,6 +60,7 @@ export function TicketEditPage() {
     if (ticket) {
       setTitle(ticket.title)
       setDescription(ticket.description ?? '')
+      setStoryPoints(ticket.story_points ?? '')
       setStatusId(ticket.status.id)
       setAssigneeId(ticket.assignee_id ?? '')
       setDueDate(ticket.due_date ?? '')
@@ -81,6 +85,7 @@ export function TicketEditPage() {
       updateTicket(tid, {
         title,
         description: description || null,
+        story_points: storyPoints === '' ? null : storyPoints,
         status_id: statusId === '' ? undefined : statusId,
         assignee_id: assigneeId === '' ? null : assigneeId,
         due_date: dueDate || null,
@@ -89,6 +94,8 @@ export function TicketEditPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ticket', tid] })
+      queryClient.invalidateQueries({ queryKey: ['project', ticket?.project_id, 'ticket-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['milestones', ticket?.project_id] })
       navigate(`/tickets/${tid}`)
     },
     onError: (err) => {
@@ -174,6 +181,7 @@ export function TicketEditPage() {
                 </option>
               ))}
             </select>
+            <StoryPointGuide />
           </label>
 
           <label className="text-sm">
@@ -187,6 +195,22 @@ export function TicketEditPage() {
               {users?.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="text-sm">
+            <span className="mb-1 block text-gray-600">{t('ticket.detail.storyPointsLabel')}</span>
+            <select
+              value={storyPoints}
+              onChange={(e) => setStoryPoints(e.target.value ? Number(e.target.value) : '')}
+              className="w-full rounded border border-gray-300 px-3 py-2"
+            >
+              <option value="">{t('ticket.detail.storyPointsUnset')}</option>
+              {STORY_POINT_OPTIONS.map((point) => (
+                <option key={point} value={point}>
+                  {point}
                 </option>
               ))}
             </select>

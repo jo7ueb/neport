@@ -57,6 +57,7 @@ export interface CreateTicketInput {
   assignee_id?: number | null
   title: string
   description?: string | null
+  story_points?: number | null
   start_date?: string | null
   end_date?: string | null
   due_date?: string | null
@@ -70,6 +71,7 @@ export function createTicket(input: CreateTicketInput): Promise<Ticket> {
 export interface UpdateTicketInput {
   title?: string
   description?: string | null
+  story_points?: number | null
   status_id?: number
   assignee_id?: number | null
   start_date?: string | null

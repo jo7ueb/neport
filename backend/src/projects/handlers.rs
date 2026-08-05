@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::{access::{self, Access}, auth::extractors::AuthUser, auth::UserRole, error::{AppError, Result}, pagination::{PageQuery, Paginated}, state::AppState};
 use crate::project_members::models::ProjectRole;
 use crate::workflows::{models::WorkflowDetail, repo as workflows_repo};
-use super::{models::Project, repo};
+use super::{models::{Project, ProjectTicketSummary}, repo};
 
 #[derive(Debug, Deserialize)]
 pub struct MemberInput {
@@ -29,6 +29,7 @@ pub struct CreateProjectRequest {
 pub struct UpdateProjectRequest {
     pub name: Option<String>,
     pub description: Option<String>,
+    pub hours_per_story_point: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -118,11 +119,32 @@ pub async fn update_project(
     Json(payload): Json<UpdateProjectRequest>,
 ) -> Result<Json<Project>> {
     access::check_project_access(&state.db, &user, id, Access::Manage).await?;
-    let project = repo::update_project(&state.db, id, payload.name.as_deref(), payload.description.as_deref())
+    if let Some(hours_per_story_point) = payload.hours_per_story_point {
+        if hours_per_story_point <= 0.0 {
+            return Err(AppError::BadRequest("hours_per_story_point must be greater than 0".to_string()));
+        }
+    }
+    let project = repo::update_project(
+        &state.db,
+        id,
+        payload.name.as_deref(),
+        payload.description.as_deref(),
+        payload.hours_per_story_point,
+    )
         .await?
         .ok_or(crate::error::AppError::NotFound)?;
     crate::audit::repo::record(&state.db, user.id, "project_updated", "project", Some(id), None, None, ip.as_deref()).await?;
     Ok(Json(project))
+}
+
+pub async fn get_ticket_summary(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Json<ProjectTicketSummary>> {
+    access::check_project_access(&state.db, &user, id, Access::Read).await?;
+    let summary = repo::get_ticket_summary(&state.db, id).await?;
+    Ok(Json(summary))
 }
 
 // Archiving/unarchiving is a site-admin-only action (not delegated to

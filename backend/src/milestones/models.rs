@@ -11,6 +11,11 @@ pub struct Milestone {
     pub description: Option<String>,
     pub created_at: DateTime<Utc>,
     pub created_by_id: Option<i64>,
+    pub total_story_points: i64,
+    pub done_story_points: i64,
+    pub remaining_story_points: i64,
+    pub remaining_estimated_hours: f64,
+    pub unestimated_ticket_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -29,5 +34,6 @@ pub struct BurndownData {
     pub start_date: Option<NaiveDate>,
     pub due_date: Option<NaiveDate>,
     pub total_at_start: i64,
+    pub unestimated_ticket_count: i64,
     pub points: Vec<BurndownPoint>,
 }

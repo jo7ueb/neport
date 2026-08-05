@@ -31,6 +31,7 @@ async fn ticket_can_be_created_with_full_attributes_in_one_request() {
             "project_id": project_id,
             "title": "Fully specified ticket",
             "description": "some details",
+            "story_points": 5,
             "assignee_id": assignee.id,
             "due_date": "2026-12-31",
             "milestone_id": milestone_id,
@@ -41,9 +42,53 @@ async fn ticket_can_be_created_with_full_attributes_in_one_request() {
     assert_eq!(resp.status(), 201, "ticket creation should accept all attributes in one request");
     let ticket: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(ticket["description"], "some details");
+    assert_eq!(ticket["story_points"], 5);
     assert_eq!(ticket["assignee_id"], assignee.id);
     assert_eq!(ticket["due_date"], "2026-12-31");
     assert_eq!(ticket["milestone_id"], milestone_id);
+}
+
+#[tokio::test]
+async fn ticket_story_points_can_be_set_cleared_and_invalid_values_are_rejected() {
+    let user = TestUser::create().await;
+    let project = user.create_project(&unique("ticket-story-points")).await;
+    let project_id = as_i64(&project, "id");
+
+    let resp = user
+        .client
+        .post(format!("{}/api/v1/tickets", base_url()))
+        .json(&json!({
+            "project_id": project_id,
+            "title": "Estimated ticket",
+            "story_points": 3,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let ticket: serde_json::Value = resp.json().await.unwrap();
+    let ticket_id = as_i64(&ticket, "id");
+    assert_eq!(ticket["story_points"], 3);
+
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), ticket_id))
+        .json(&json!({ "story_points": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let updated: serde_json::Value = resp.json().await.unwrap();
+    assert!(updated["story_points"].is_null());
+
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), ticket_id))
+        .json(&json!({ "story_points": 4 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
 }
 
 #[tokio::test]
