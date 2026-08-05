@@ -65,6 +65,9 @@ export function ProjectNav({ project }: { project: Project | undefined }) {
     <>
       <nav className="mb-4 flex items-center justify-between gap-2 rounded border bg-white p-2">
         <div className="flex flex-wrap gap-2">
+          <NavLink to={`/projects/${projectId}/dashboard`} className={linkClass}>
+            {t('projectNav.dashboard')}
+          </NavLink>
           <NavLink to={`/projects/${projectId}/wbs`} className={linkClass}>
             {t('projectNav.wbs')}
           </NavLink>

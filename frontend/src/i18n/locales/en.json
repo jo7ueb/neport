@@ -85,12 +85,32 @@
     }
   },
   "projectNav": {
+    "dashboard": "Dashboard",
     "tickets": "Tickets",
     "kanban": "Kanban",
     "milestones": "Milestones",
     "wbs": "WBS / Gantt",
     "members": "Members",
     "archivedBanner": "This project is archived. It is read-only - no edits or new items are allowed."
+  },
+  "projectDashboard": {
+    "title": "Project dashboard",
+    "titleWithProject": "{{project}} dashboard",
+    "backToProjects": "Back to project list",
+    "totalTickets": "Total tickets",
+    "completion": "Completion",
+    "remainingStoryPoints": "Remaining story points",
+    "remainingEstimatedHours": "Remaining estimate",
+    "statusOverview": "Progress overview",
+    "activeWork": "Work in progress",
+    "overdue": "Overdue tickets",
+    "milestones": "Milestone progress",
+    "openWbs": "Open WBS →",
+    "noTickets": "No tickets",
+    "noActiveWork": "No work in progress",
+    "noOverdue": "No overdue tickets",
+    "noMilestones": "No milestones",
+    "unassigned": "Unassigned"
   },
   "ticket": {
     "status": {

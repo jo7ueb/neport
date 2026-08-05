@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { getProject, getProjectTicketSummary, getProjectWorkflow } from '../api/projects'
+import { getProject, getProjectWorkflow } from '../api/projects'
 import { listMilestones } from '../api/milestones'
 import { listProjectTickets, type TicketSort } from '../api/tickets'
 import { listAllUsers } from '../api/users'
@@ -11,7 +11,6 @@ import { Pagination } from '../components/Pagination'
 import { TicketCreateModal } from '../components/TicketCreateModal'
 import { TicketProgress } from '../components/TicketProgress'
 import { statusLabel } from '../i18n/statusLabel'
-import { formatEstimatedHours } from '../lib/storyPoints'
 import type { WorkflowStatus } from '../types/models'
 
 function isOverdue(dueDate: string | null, status: WorkflowStatus): boolean {
@@ -42,11 +41,6 @@ export function TicketListPage() {
     queryKey: ['project', pid, 'workflow'],
     queryFn: () => getProjectWorkflow(pid),
   })
-  const { data: summary } = useQuery({
-    queryKey: ['project', pid, 'ticket-summary'],
-    queryFn: () => getProjectTicketSummary(pid),
-  })
-
   const { data, isLoading } = useQuery({
     queryKey: ['tickets', pid, statusFilter, assigneeFilter, overdueOnly, sort, page, perPage],
     queryFn: () =>
@@ -97,8 +91,6 @@ export function TicketListPage() {
     return milestones?.find((m) => m.id === id)?.name ?? `#${id}`
   }
 
-  const remainingEstimate = summary ? formatEstimatedHours(summary.remaining_estimated_hours) : null
-
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -132,25 +124,6 @@ export function TicketListPage() {
           queryClient.invalidateQueries({ queryKey: ['milestones', pid] })
         }}
       />
-
-      {summary && (
-        <div className="mb-4 grid gap-3 rounded border bg-white p-4 text-sm sm:grid-cols-3">
-          <div>
-            <div className="text-gray-500">{t('ticket.list.remainingStoryPoints')}</div>
-            <div className="text-xl font-semibold text-gray-800">{summary.remaining_story_points}</div>
-          </div>
-          <div>
-            <div className="text-gray-500">{t('ticket.list.remainingEstimatedHours')}</div>
-            <div className="text-xl font-semibold text-gray-800">
-              {remainingEstimate ? t('workSessionMonthly.hoursMinutes', remainingEstimate) : '-'}
-            </div>
-          </div>
-          <div>
-            <div className="text-gray-500">{t('ticket.list.unestimatedCount')}</div>
-            <div className="text-xl font-semibold text-gray-800">{summary.unestimated_ticket_count}</div>
-          </div>
-        </div>
-      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3 rounded border bg-white p-3 text-sm">
         <label className="flex items-center gap-1">

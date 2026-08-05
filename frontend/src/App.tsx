@@ -4,6 +4,7 @@ import { Layout } from './components/Layout'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProjectListPage } from './pages/ProjectListPage'
+import { ProjectDashboardPage } from './pages/ProjectDashboardPage'
 import { TicketListPage } from './pages/TicketListPage'
 import { TicketViewPage } from './pages/TicketViewPage'
 import { TicketEditPage } from './pages/TicketEditPage'
@@ -37,7 +38,8 @@ export function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/projects" element={<ProjectListPage />} />
-          <Route path="/projects/:projectId" element={<Navigate to="wbs" replace />} />
+          <Route path="/projects/:projectId" element={<Navigate to="dashboard" replace />} />
+          <Route path="/projects/:projectId/dashboard" element={<ProjectDashboardPage />} />
           <Route path="/projects/:projectId/tickets" element={<TicketListPage />} />
           <Route path="/tickets/:ticketId" element={<TicketViewPage />} />
           <Route path="/tickets/:ticketId/edit" element={<TicketEditPage />} />

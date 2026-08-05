@@ -85,12 +85,32 @@
     }
   },
   "projectNav": {
+    "dashboard": "ダッシュボード",
     "tickets": "チケット",
     "kanban": "かんばん",
     "milestones": "マイルストーン",
     "wbs": "WBS / ガント",
     "members": "メンバー",
     "archivedBanner": "このプロジェクトはアーカイブされています。閲覧のみ可能で、編集・作成はできません。"
+  },
+  "projectDashboard": {
+    "title": "プロジェクトダッシュボード",
+    "titleWithProject": "{{project}} のダッシュボード",
+    "backToProjects": "プロジェクト一覧に戻る",
+    "totalTickets": "チケット総数",
+    "completion": "完了率",
+    "remainingStoryPoints": "残りストーリーポイント",
+    "remainingEstimatedHours": "残り目安時間",
+    "statusOverview": "進行状況",
+    "activeWork": "現在進行中の作業",
+    "overdue": "遅延中のチケット",
+    "milestones": "マイルストーンの進捗",
+    "openWbs": "WBSを開く →",
+    "noTickets": "チケットはありません",
+    "noActiveWork": "現在進行中の作業はありません",
+    "noOverdue": "遅延中のチケットはありません",
+    "noMilestones": "マイルストーンはありません",
+    "unassigned": "未割り当て"
   },
   "ticket": {
     "status": {
