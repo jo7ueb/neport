@@ -83,7 +83,12 @@ export function TicketCreateModal({ open, onClose, projectId, parentTicketId, on
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title={t('ticket.list.createTitle')}>
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title={t('ticket.list.createTitle')}
+      className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-y-auto"
+    >
       <form onSubmit={handleSubmit} className="space-y-3">
         {error && <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
         <input
@@ -101,13 +106,15 @@ export function TicketCreateModal({ open, onClose, projectId, parentTicketId, on
           <MarkdownField value={description} onChange={setDescription} rows={5} />
         </div>
 
-        <div className="flex gap-3">
+        <div className="grid gap-3 md:grid-cols-3">
           <div className="flex-1">
             <label className="mb-1 block text-sm font-medium text-gray-700">{t('ticket.detail.assigneeLabel')}</label>
             <UserPicker value={assignee} onChange={setAssignee} candidates={assignableUsers ?? []} />
           </div>
           <div className="flex-1">
-            <label className="mb-1 block text-sm font-medium text-gray-700">{t('ticket.detail.storyPointsLabel')}</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              <StoryPointGuide />
+            </label>
             <select
               value={storyPoints}
               onChange={(e) => setStoryPoints(e.target.value ? Number(e.target.value) : '')}
@@ -120,7 +127,6 @@ export function TicketCreateModal({ open, onClose, projectId, parentTicketId, on
                 </option>
               ))}
             </select>
-            <StoryPointGuide />
           </div>
           <div className="flex-1">
             <label className="mb-1 block text-sm font-medium text-gray-700">{t('ticket.detail.dueDateLabel')}</label>
