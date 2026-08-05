@@ -193,7 +193,6 @@ CREATE TABLE projects (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     archived_at timestamp with time zone,
     workflow_id bigint NOT NULL,
-    hours_per_story_point double precision DEFAULT 1.0 NOT NULL,
     created_by_id bigint
 );
 
@@ -303,7 +302,6 @@ CREATE TABLE tickets (
     assignee_id bigint,
     title text NOT NULL,
     description text,
-    story_points integer,
     start_date date,
     end_date date,
     due_date date,
@@ -315,8 +313,7 @@ CREATE TABLE tickets (
     -- ticket_activity_log/ticket_comments (ON DELETE CASCADE) survive a
     -- "delete" and stay available for traceability. Every read query goes
     -- through TICKET_FROM_JOIN, which filters this out.
-    deleted_at timestamp with time zone,
-    CONSTRAINT tickets_story_points_check CHECK ((story_points = ANY (ARRAY[1, 2, 3, 5, 8, 13, 21])) OR story_points IS NULL)
+    deleted_at timestamp with time zone
 );
 
 CREATE SEQUENCE tickets_id_seq
