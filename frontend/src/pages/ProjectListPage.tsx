@@ -295,7 +295,7 @@ export function ProjectListPage() {
         <ul className="divide-y rounded border bg-white">
           {projects?.map((project) => (
             <li key={project.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
-              <Link to={`/projects/${project.id}/tickets`} className="block flex-1">
+              <Link to={`/projects/${project.id}/wbs`} className="block flex-1">
                 <div className="font-medium text-gray-800">
                   {project.name}
                   {project.archived_at && (

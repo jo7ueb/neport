@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Navigate, Routes, Route } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
 import { LoginPage } from './pages/LoginPage'
@@ -37,6 +37,7 @@ export function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/projects" element={<ProjectListPage />} />
+          <Route path="/projects/:projectId" element={<Navigate to="wbs" replace />} />
           <Route path="/projects/:projectId/tickets" element={<TicketListPage />} />
           <Route path="/tickets/:ticketId" element={<TicketViewPage />} />
           <Route path="/tickets/:ticketId/edit" element={<TicketEditPage />} />
