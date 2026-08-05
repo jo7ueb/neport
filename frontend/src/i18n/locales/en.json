@@ -273,6 +273,9 @@
       "hierarchy": "Level",
       "wbsNumber": "WBS No.",
       "title": "Title",
+      "startDate": "Start",
+      "dueDate": "Due",
+      "storyPoints": "SP",
       "status": "Status",
       "progress": "Progress",
       "assignee": "Assignee"

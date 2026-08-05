@@ -273,6 +273,9 @@
       "hierarchy": "階層",
       "wbsNumber": "WBS番号",
       "title": "タイトル",
+      "startDate": "開始予定日",
+      "dueDate": "完了予定日",
+      "storyPoints": "SP",
       "status": "ステータス",
       "progress": "進捗",
       "assignee": "担当者"

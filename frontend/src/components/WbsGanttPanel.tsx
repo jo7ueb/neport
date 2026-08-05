@@ -7,6 +7,7 @@ import { updateTicket, type UpdateTicketInput } from '../api/tickets'
 import { getErrorMessage } from '../i18n/apiErrors'
 import { statusLabel } from '../i18n/statusLabel'
 import { TicketCreateModal } from './TicketCreateModal'
+import { STORY_POINT_OPTIONS } from '../lib/storyPoints'
 import type { Ticket, TicketDependency, TicketNode, User, WorkflowDetail, WorkflowStatus } from '../types/models'
 
 // Explicit, rather than relying on frappe-gantt's un-overridden Day-view
@@ -192,7 +193,7 @@ function localizeMonthHeaders(gantt: Gantt, locale: string) {
   })
 }
 
-type EditableField = 'title' | 'status' | 'assignee_id'
+type EditableField = 'title' | 'status' | 'assignee_id' | 'story_points'
 
 export function WbsGanttPanel({
   projectId,
@@ -255,6 +256,8 @@ export function WbsGanttPanel({
       setDraftValue(String(ticket.status.id))
     } else if (field === 'assignee_id') {
       setDraftValue(ticket.assignee_id === null ? '' : String(ticket.assignee_id))
+    } else if (field === 'story_points') {
+      setDraftValue(ticket.story_points === null ? '' : String(ticket.story_points))
     } else {
       setDraftValue(ticket.title)
     }
@@ -267,6 +270,8 @@ export function WbsGanttPanel({
     const input: UpdateTicketInput = {}
     if (field === 'assignee_id') {
       input.assignee_id = draftValue === '' ? null : Number(draftValue)
+    } else if (field === 'story_points') {
+      input.story_points = draftValue === '' ? null : Number(draftValue)
     } else if (field === 'status') {
       input.status_id = Number(draftValue)
     } else {
@@ -389,7 +394,7 @@ export function WbsGanttPanel({
         <p className="text-sm text-gray-400">{t('wbs.empty')}</p>
       ) : (
         <div className="flex items-start overflow-hidden rounded border bg-white">
-          <div className="w-[38%] min-w-[640px] max-w-[900px] flex-shrink-0 overflow-hidden border-r border-gray-200 text-sm">
+          <div className="w-[52%] min-w-[900px] max-w-[1200px] flex-shrink-0 overflow-hidden border-r border-gray-200 text-sm">
             <div
               style={{ height: HEADER_HEIGHT }}
               className="flex items-center border-b bg-gray-50 px-2 text-xs font-medium text-gray-500"
@@ -397,6 +402,9 @@ export function WbsGanttPanel({
               <span className="w-12 flex-shrink-0">{t('wbs.columns.hierarchy')}</span>
               <span className="w-16 flex-shrink-0">{t('wbs.columns.wbsNumber')}</span>
               <span className="min-w-0 flex-1">{t('wbs.columns.title')}</span>
+              <span className="w-20 flex-shrink-0">{t('wbs.columns.startDate')}</span>
+              <span className="w-20 flex-shrink-0">{t('wbs.columns.dueDate')}</span>
+              <span className="w-14 flex-shrink-0">{t('wbs.columns.storyPoints')}</span>
               <span className="w-24 flex-shrink-0">{t('wbs.columns.status')}</span>
               <span className="w-12 flex-shrink-0">{t('wbs.columns.progress')}</span>
               <span className="w-32 flex-shrink-0">{t('wbs.columns.assignee')}</span>
@@ -479,6 +487,30 @@ export function WbsGanttPanel({
                           #{ticket.id}
                         </Link>{' '}
                         {ticket.title}
+                      </span>
+                    )}
+                  </span>
+                  <span className="w-20 flex-shrink-0 truncate text-xs text-gray-600">{ticket.start_date ?? '-'}</span>
+                  <span className="w-20 flex-shrink-0 truncate text-xs text-gray-600">{ticket.due_date ?? '-'}</span>
+                  <span className="w-14 flex-shrink-0 text-center text-xs text-gray-600">
+                    {isEditing('story_points') ? (
+                      <select
+                        autoFocus
+                        value={draftValue}
+                        onChange={(e) => setDraftValue(e.target.value)}
+                        onBlur={commitEdit}
+                        className="w-full rounded border border-gray-300 px-1 py-0.5 text-xs"
+                      >
+                        <option value="">-</option>
+                        {STORY_POINT_OPTIONS.map((point) => (
+                          <option key={point} value={point}>
+                            {point}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span onClick={() => startEdit(ticket, 'story_points')} className="cursor-pointer hover:bg-gray-50">
+                        {ticket.story_points ?? '-'}
                       </span>
                     )}
                   </span>
