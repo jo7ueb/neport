@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { getProject, getProjectWorkflow } from '../api/projects'
 import { getTicketTree } from '../api/tickets'
@@ -38,7 +38,10 @@ export function WbsPage() {
   const { t } = useTranslation()
   const { projectId } = useParams()
   const pid = Number(projectId)
-  const [milestoneFilter, setMilestoneFilter] = useState<number | ''>('')
+  const [searchParams] = useSearchParams()
+  const milestoneParam = Number(searchParams.get('milestone'))
+  const initialMilestoneFilter = Number.isInteger(milestoneParam) && milestoneParam > 0 ? milestoneParam : ''
+  const [milestoneFilter, setMilestoneFilter] = useState<number | ''>(initialMilestoneFilter)
   const [assigneeFilter, setAssigneeFilter] = useState<number | ''>('')
   const [overdueOnly, setOverdueOnly] = useState(false)
 

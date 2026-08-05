@@ -251,6 +251,7 @@
     "edit": "Edit",
     "delete": "Delete",
     "burndown": "Burndown",
+    "openWbs": "Open WBS for this milestone",
     "due": "Due: {{date}}",
     "startsOn": "Starts: {{date}}",
     "empty": "No milestones",

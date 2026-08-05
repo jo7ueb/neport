@@ -302,7 +302,13 @@ export function MilestonesPage() {
             ) : (
               <li key={m.id} className="flex items-center justify-between px-4 py-3">
                 <div>
-                  <div className="font-medium text-gray-800">{m.name}</div>
+                  <Link
+                    to={`/projects/${pid}/wbs?milestone=${m.id}`}
+                    className="font-medium text-blue-600 hover:underline"
+                    title={t('milestone.openWbs')}
+                  >
+                    {m.name}
+                  </Link>
                   {m.start_date && <div className="text-sm text-gray-500">{t('milestone.startsOn', { date: m.start_date })}</div>}
                   {m.due_date && <div className="text-sm text-gray-500">{t('milestone.due', { date: m.due_date })}</div>}
                   {m.description && <div className="text-sm text-gray-500">{m.description}</div>}

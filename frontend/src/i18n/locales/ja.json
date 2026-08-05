@@ -251,6 +251,7 @@
     "edit": "編集",
     "delete": "削除",
     "burndown": "バーンダウン",
+    "openWbs": "このマイルストーンのWBSを開く",
     "due": "締切: {{date}}",
     "startsOn": "開始: {{date}}",
     "empty": "マイルストーンがありません",
