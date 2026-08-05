@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -22,18 +22,43 @@ interface FlatRow {
   ticket: Ticket
   depth: number
   prevSiblingId: number | null
+  wbsNumber: string
 }
 
-function flatten(nodes: TicketNode[], depth = 0): FlatRow[] {
+function flatten(nodes: TicketNode[], depth = 0, parentNumber = ''): FlatRow[] {
   const rows: FlatRow[] = []
   let prevSiblingId: number | null = null
-  for (const node of nodes) {
+  for (const [index, node] of nodes.entries()) {
     const { children, ...ticket } = node
-    rows.push({ ticket, depth, prevSiblingId })
-    rows.push(...flatten(children, depth + 1))
+    const wbsNumber = parentNumber ? `${parentNumber}.${index + 1}` : String(index + 1)
+    rows.push({ ticket, depth, prevSiblingId, wbsNumber })
+    rows.push(...flatten(children, depth + 1, wbsNumber))
     prevSiblingId = node.id
   }
   return rows
+}
+
+type WbsSort = 'manual' | 'title_asc' | 'due_date_asc' | 'created_at_asc' | 'updated_at_desc' | 'status_asc'
+
+function sortNodes(nodes: TicketNode[], sort: WbsSort): TicketNode[] {
+  if (sort === 'manual') return nodes
+
+  const sorted = [...nodes].sort((a, b) => {
+    switch (sort) {
+      case 'title_asc':
+        return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
+      case 'due_date_asc':
+        return (a.due_date ?? '9999-12-31').localeCompare(b.due_date ?? '9999-12-31')
+      case 'created_at_asc':
+        return a.created_at.localeCompare(b.created_at)
+      case 'updated_at_desc':
+        return b.updated_at.localeCompare(a.updated_at)
+      case 'status_asc':
+        return a.status.position - b.status.position || a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
+    }
+  })
+
+  return sorted.map((node) => ({ ...node, children: sortNodes(node.children, sort) }))
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -190,12 +215,14 @@ export function WbsGanttPanel({
   const [chartError, setChartError] = useState<string | null>(null)
   const [editingCell, setEditingCell] = useState<{ ticketId: number; field: EditableField } | null>(null)
   const [draftValue, setDraftValue] = useState('')
+  const [sort, setSort] = useState<WbsSort>('manual')
   // undefined = modal closed, null = creating a root task, number = creating a child of that ticket
   const [createModalParent, setCreateModalParent] = useState<number | null | undefined>(undefined)
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['project', projectId, 'tickets', 'tree'] })
 
-  const rows = flatten(nodes)
+  const sortedNodes = useMemo(() => sortNodes(nodes, sort), [nodes, sort])
+  const rows = flatten(sortedNodes)
   const rowsById = new Map(rows.map((r) => [r.ticket.id, r]))
 
   const updateMutation = useMutation({
@@ -334,13 +361,28 @@ export function WbsGanttPanel({
     <div>
       {chartError && <div className="mb-2 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{chartError}</div>}
 
-      <div className="mb-2">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
         <button
           onClick={() => setCreateModalParent(null)}
           className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-100"
         >
           {t('wbs.addRootTask')}
         </button>
+        <label className="ml-auto flex items-center gap-2 text-sm text-gray-600">
+          <span>{t('wbs.sortLabel')}</span>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as WbsSort)}
+            className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700"
+          >
+            <option value="manual">{t('wbs.sort.manual')}</option>
+            <option value="title_asc">{t('wbs.sort.titleAsc')}</option>
+            <option value="due_date_asc">{t('wbs.sort.dueDateAsc')}</option>
+            <option value="created_at_asc">{t('wbs.sort.createdAtAsc')}</option>
+            <option value="updated_at_desc">{t('wbs.sort.updatedAtDesc')}</option>
+            <option value="status_asc">{t('wbs.sort.statusAsc')}</option>
+          </select>
+        </label>
       </div>
 
       {rows.length === 0 ? (
@@ -353,6 +395,7 @@ export function WbsGanttPanel({
               className="flex items-center border-b bg-gray-50 px-2 text-xs font-medium text-gray-500"
             >
               <span className="w-12 flex-shrink-0">{t('wbs.columns.hierarchy')}</span>
+              <span className="w-16 flex-shrink-0">{t('wbs.columns.wbsNumber')}</span>
               <span className="min-w-0 flex-1">{t('wbs.columns.title')}</span>
               <span className="w-24 flex-shrink-0">{t('wbs.columns.status')}</span>
               <span className="w-12 flex-shrink-0">{t('wbs.columns.progress')}</span>
@@ -368,7 +411,9 @@ export function WbsGanttPanel({
                 <div
                   key={ticket.id}
                   style={{ height: ROW_HEIGHT }}
-                  className="flex items-center border-b border-gray-100 px-2 hover:bg-gray-50"
+                  className={`flex items-center border-b border-gray-100 px-2 hover:bg-gray-50 ${
+                    ticket.child_ticket_count > 0 ? 'bg-slate-50/60' : ''
+                  }`}
                 >
                   <span className="flex w-12 flex-shrink-0 items-center">
                     <button
@@ -388,7 +433,26 @@ export function WbsGanttPanel({
                       →
                     </button>
                   </span>
-                  <span className="min-w-0 flex-1" style={{ paddingLeft: depth * 14 }}>
+                  <span className="w-16 flex-shrink-0 font-mono text-xs text-gray-500">{row.wbsNumber}</span>
+                  <span
+                    className={`relative min-w-0 flex-1 ${ticket.child_ticket_count > 0 ? 'font-medium' : ''}`}
+                    style={{ paddingLeft: depth * 18 + 4 }}
+                  >
+                    {Array.from({ length: depth }, (_, guideDepth) => (
+                      <span
+                        key={guideDepth}
+                        aria-hidden="true"
+                        className="absolute bottom-0 top-0 border-l border-slate-200"
+                        style={{ left: guideDepth * 18 + 8 }}
+                      />
+                    ))}
+                    {depth > 0 && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute top-1/2 w-3 border-t border-slate-300"
+                        style={{ left: (depth - 1) * 18 + 8 }}
+                      />
+                    )}
                     {isEditing('title') ? (
                       <input
                         autoFocus

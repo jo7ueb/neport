@@ -18,6 +18,9 @@
 - Docker & Docker Compose
 - ポート 8880, 3000, 5432 が利用可能
 
+フロントエンドを含むビルド・実行は Docker 前提です。ローカルの Node.js/npm での
+`frontend` の直接ビルド・実行は想定していません。
+
 ### 起動
 
 ```bash

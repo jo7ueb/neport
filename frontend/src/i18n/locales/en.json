@@ -271,6 +271,7 @@
     "backToProjects": "Back to project list",
     "columns": {
       "hierarchy": "Level",
+      "wbsNumber": "WBS No.",
       "title": "Title",
       "status": "Status",
       "progress": "Progress",
@@ -278,6 +279,15 @@
     },
     "addRootTask": "+ Add root task",
     "addChildTask": "+ Add child task",
+    "sortLabel": "Sort:",
+    "sort": {
+      "manual": "Original order",
+      "titleAsc": "Title",
+      "dueDateAsc": "Due date",
+      "createdAtAsc": "Oldest created",
+      "updatedAtDesc": "Recently updated",
+      "statusAsc": "Status"
+    },
     "unassigned": "Not set",
     "empty": "No tasks yet",
     "indentAria": "Indent",

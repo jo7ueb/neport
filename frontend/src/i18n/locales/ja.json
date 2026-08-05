@@ -271,6 +271,7 @@
     "backToProjects": "プロジェクト一覧に戻る",
     "columns": {
       "hierarchy": "階層",
+      "wbsNumber": "WBS番号",
       "title": "タイトル",
       "status": "ステータス",
       "progress": "進捗",
@@ -278,6 +279,15 @@
     },
     "addRootTask": "+ ルートタスク追加",
     "addChildTask": "+ 子タスク追加",
+    "sortLabel": "並び順:",
+    "sort": {
+      "manual": "登録順",
+      "titleAsc": "タイトル順",
+      "dueDateAsc": "期限が近い順",
+      "createdAtAsc": "作成が古い順",
+      "updatedAtDesc": "更新が新しい順",
+      "statusAsc": "ステータス順"
+    },
     "unassigned": "未設定",
     "empty": "タスクはまだありません",
     "indentAria": "インデント",

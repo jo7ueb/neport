@@ -121,6 +121,10 @@ src/
    docker compose up --build
    ```
 
+   **重要**: このプロジェクトはローカルの Node.js/npm での実行を想定しない。
+   フロントエンドのビルド・検証は、`frontend/Dockerfile` の Node.js 24 環境を使う
+   Docker / Docker Compose 経由で行うこと。`cd frontend && npm run build` は標準手順ではない。
+
 ## フロントエンド（React）
 
 **現在**: ディレクトリのみ存在（`frontend/dist/index.html` はプレースホルダー）
@@ -228,13 +232,12 @@ docker compose up -d db
 # 2. マイグレーション
 docker compose run --rm migrator
 
-# 3. バックエンド起動（ローカル cargo）
+# 3. バックエンド・フロントエンド起動（Docker Compose。標準手順）
+docker compose up -d --build
+
+# 参考: バックエンドだけをローカル cargo で起動する場合
 cd backend
 cargo run
-
-# 4. フロントエンド起動（TBD）
-# cd frontend
-# npm run dev
 ```
 
 ## テスト戦略
