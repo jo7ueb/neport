@@ -60,7 +60,7 @@ export function TicketEditPage() {
     if (ticket) {
       setTitle(ticket.title)
       setDescription(ticket.description ?? '')
-      setStoryPoints(ticket.story_points ?? '')
+      setStoryPoints(ticket.child_ticket_count > 0 ? '' : ticket.story_points ?? '')
       setStatusId(ticket.status.id)
       setAssigneeId(ticket.assignee_id ?? '')
       setDueDate(ticket.due_date ?? '')
@@ -181,7 +181,6 @@ export function TicketEditPage() {
                 </option>
               ))}
             </select>
-            <StoryPointGuide />
           </label>
 
           <label className="text-sm">
@@ -201,19 +200,27 @@ export function TicketEditPage() {
           </label>
 
           <label className="text-sm">
-            <span className="mb-1 block text-gray-600">{t('ticket.detail.storyPointsLabel')}</span>
-            <select
-              value={storyPoints}
-              onChange={(e) => setStoryPoints(e.target.value ? Number(e.target.value) : '')}
-              className="w-full rounded border border-gray-300 px-3 py-2"
-            >
-              <option value="">{t('ticket.detail.storyPointsUnset')}</option>
-              {STORY_POINT_OPTIONS.map((point) => (
-                <option key={point} value={point}>
-                  {point}
-                </option>
-              ))}
-            </select>
+            <span className="mb-1 block text-gray-600">
+              <StoryPointGuide />
+            </span>
+            {ticket.child_ticket_count > 0 ? (
+              <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-gray-500">
+                {t('ticket.detail.storyPointsNotApplicable')}
+              </div>
+            ) : (
+              <select
+                value={storyPoints}
+                onChange={(e) => setStoryPoints(e.target.value ? Number(e.target.value) : '')}
+                className="w-full rounded border border-gray-300 px-3 py-2"
+              >
+                <option value="">{t('ticket.detail.storyPointsUnset')}</option>
+                {STORY_POINT_OPTIONS.map((point) => (
+                  <option key={point} value={point}>
+                    {point}
+                  </option>
+                ))}
+              </select>
+            )}
           </label>
 
           <label className="text-sm">

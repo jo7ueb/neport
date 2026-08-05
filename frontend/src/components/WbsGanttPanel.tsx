@@ -252,6 +252,7 @@ export function WbsGanttPanel({
   dateMutateRef.current = dateMutation.mutate
 
   function startEdit(ticket: Ticket, field: EditableField) {
+    if (field === 'story_points' && ticket.child_ticket_count > 0) return
     if (field === 'status') {
       setDraftValue(String(ticket.status.id))
     } else if (field === 'assignee_id') {
@@ -509,8 +510,11 @@ export function WbsGanttPanel({
                         ))}
                       </select>
                     ) : (
-                      <span onClick={() => startEdit(ticket, 'story_points')} className="cursor-pointer hover:bg-gray-50">
-                        {ticket.story_points ?? '-'}
+                      <span
+                        onClick={() => startEdit(ticket, 'story_points')}
+                        className={ticket.child_ticket_count > 0 ? '' : 'cursor-pointer hover:bg-gray-50'}
+                      >
+                        {ticket.child_ticket_count > 0 ? t('ticket.detail.storyPointsNotApplicable') : ticket.story_points ?? '-'}
                       </span>
                     )}
                   </span>

@@ -212,7 +212,11 @@ export function TicketListPage() {
                     </Link>
                   </td>
                   <td className="px-3 py-2">{statusLabel(t, ticket.status)}</td>
-                  <td className="px-3 py-2">{ticket.story_points ?? '-'}</td>
+                  <td className="px-3 py-2">
+                    {ticket.child_ticket_count > 0
+                      ? t('ticket.detail.storyPointsNotApplicable')
+                      : ticket.story_points ?? '-'}
+                  </td>
                   <td className="px-3 py-2">
                     <TicketProgress done={ticket.child_done_ticket_count} total={ticket.child_ticket_count} />
                   </td>

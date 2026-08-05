@@ -183,7 +183,11 @@ export function TicketViewPage() {
               </div>
               <div>
                 <dt className="text-gray-500">{t('ticket.detail.storyPointsLabel')}</dt>
-                <dd className="text-gray-800">{ticket.story_points ?? t('ticket.detail.storyPointsUnset')}</dd>
+                <dd className="text-gray-800">
+                  {ticket.child_ticket_count > 0
+                    ? t('ticket.detail.storyPointsNotApplicable')
+                    : ticket.story_points ?? t('ticket.detail.storyPointsUnset')}
+                </dd>
               </div>
               <div>
                 <dt className="text-gray-500">{t('ticket.detail.actualDurationLabel')}</dt>

@@ -164,6 +164,7 @@
       "childProgressLabel": "Child Ticket Progress",
       "assigneeLabel": "Assignee",
       "storyPointsLabel": "Story points",
+      "storyPointsNotApplicable": "N/A",
       "storyPointsUnset": "Unestimated",
       "storyPointsGuideTitle": "Story point guide",
       "storyPointsGuideDescription": "Estimate relative size, including complexity, uncertainty, and dependencies, not just hours.",

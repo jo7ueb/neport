@@ -180,6 +180,7 @@ pub async fn get_ticket_summary(db: &PgPool, project_id: i64) -> Result<ProjectT
          LEFT JOIN tickets t
            ON t.project_id = p.id
           AND t.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM tickets child WHERE child.parent_ticket_id = t.id AND child.deleted_at IS NULL)
           AND t.status_id IN (
               SELECT id FROM workflow_statuses WHERE category NOT IN ('done', 'confirmed')
           )

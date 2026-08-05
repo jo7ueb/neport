@@ -67,6 +67,7 @@ async fn fetch_milestone(db: &PgPool, where_clause: &str, bind_id: i64) -> Resul
          FROM milestones m
          JOIN projects p ON p.id = m.project_id
          LEFT JOIN tickets t ON t.milestone_id = m.id AND t.deleted_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM tickets child WHERE child.parent_ticket_id = t.id AND child.deleted_at IS NULL)
          LEFT JOIN workflow_statuses ws ON ws.id = t.status_id
          WHERE {where_clause}
          GROUP BY m.id, p.hours_per_story_point"
@@ -114,6 +115,7 @@ pub async fn list_milestones_for_project(db: &PgPool, project_id: i64) -> Result
          FROM milestones m
          JOIN projects p ON p.id = m.project_id
          LEFT JOIN tickets t ON t.milestone_id = m.id AND t.deleted_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM tickets child WHERE child.parent_ticket_id = t.id AND child.deleted_at IS NULL)
          LEFT JOIN workflow_statuses ws ON ws.id = t.status_id
          WHERE m.project_id = $1 AND m.deleted_at IS NULL
          GROUP BY m.id, p.hours_per_story_point
@@ -183,7 +185,9 @@ pub async fn burndown_data(db: &PgPool, milestone_id: i64) -> Result<Option<Burn
     };
 
     let tickets: Vec<(i64, chrono::DateTime<chrono::Utc>, i64, Option<i32>)> = sqlx::query_as(
-        "SELECT id, created_at, status_id, story_points FROM tickets WHERE milestone_id = $1 AND deleted_at IS NULL"
+        "SELECT t.id, t.created_at, t.status_id, t.story_points FROM tickets t
+         WHERE t.milestone_id = $1 AND t.deleted_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM tickets child WHERE child.parent_ticket_id = t.id AND child.deleted_at IS NULL)"
     )
     .bind(milestone_id)
     .fetch_all(db)

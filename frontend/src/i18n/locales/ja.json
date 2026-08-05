@@ -164,6 +164,7 @@
       "childProgressLabel": "子チケットの進捗",
       "assigneeLabel": "担当者",
       "storyPointsLabel": "ストーリーポイント",
+      "storyPointsNotApplicable": "N/A",
       "storyPointsUnset": "未見積もり",
       "storyPointsGuideTitle": "ストーリーポイントの目安",
       "storyPointsGuideDescription": "作業量だけでなく、複雑さ・不確実性・依存関係を含めた相対的な大きさで選択してください。",
