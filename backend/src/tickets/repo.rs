@@ -241,18 +241,35 @@ pub async fn search_tickets(db: &PgPool, query: &str, limit: i64, user_id: i64, 
 
 pub async fn get_ticket_tree(db: &PgPool, project_id: i64) -> Result<Vec<TicketNode>> {
     let sql = format!(
-        "WITH RECURSIVE ticket_tree AS (
-            SELECT {TICKET_SELECT_COLUMNS}, 0 AS depth, ARRAY[t.id]::bigint[] AS path
+        "WITH RECURSIVE ticket_order AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY project_id, parent_ticket_id
+                       ORDER BY start_date ASC NULLS LAST,
+                                due_date ASC NULLS LAST,
+                                created_at ASC,
+                                id ASC
+                   ) - 1 AS sibling_order
+            FROM tickets
+            WHERE deleted_at IS NULL
+        ), ticket_tree AS (
+            SELECT {TICKET_SELECT_COLUMNS}, 0 AS depth,
+                   ARRAY[ord.sibling_order]::bigint[] AS order_path,
+                   ARRAY[t.id]::bigint[] AS id_path
             {TICKET_FROM_JOIN}
+            JOIN ticket_order ord ON ord.id = t.id
             WHERE t.project_id = $1 AND t.parent_ticket_id IS NULL
             UNION ALL
-            SELECT {TICKET_SELECT_COLUMNS}, tt.depth + 1, tt.path || t.id
+            SELECT {TICKET_SELECT_COLUMNS}, tt.depth + 1,
+                   tt.order_path || ord.sibling_order,
+                   tt.id_path || t.id
             FROM tickets t
             JOIN workflow_statuses ws ON t.status_id = ws.id AND t.deleted_at IS NULL
             JOIN ticket_tree tt ON t.parent_ticket_id = tt.id
-            WHERE NOT (t.id = ANY(tt.path))
+            JOIN ticket_order ord ON ord.id = t.id
+            WHERE NOT (t.id = ANY(tt.id_path))
         )
-        SELECT {TICKET_SELECT_COLUMNS_BARE} FROM ticket_tree ORDER BY path"
+        SELECT {TICKET_SELECT_COLUMNS_BARE} FROM ticket_tree ORDER BY order_path"
     );
     let flat_rows = sqlx::query_as::<_, TicketRow>(&sql)
         .bind(project_id)
@@ -282,7 +299,8 @@ pub async fn get_ticket_tree(db: &PgPool, project_id: i64) -> Result<Vec<TicketN
         ticket_map.insert(id, node);
     }
 
-    // `ordered_ids` is in `path` order, so a node always appears before any
+    // `ordered_ids` is in start-date order within each sibling group and
+    // `order_path` order, so a node always appears before any
     // of its descendants. Walking it in reverse guarantees a node's children
     // are always attached to it *before* the node itself is ever removed
     // from the map to be attached to its own parent — otherwise, whichever
