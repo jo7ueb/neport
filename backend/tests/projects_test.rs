@@ -376,6 +376,53 @@ async fn creating_a_project_with_initial_members_adds_them_instead_of_the_creato
 }
 
 #[tokio::test]
+async fn failed_initial_member_insert_rolls_back_project_creation() {
+    let manager = TestUser::create().await;
+    let admin = admin_client().await;
+    let name = unique("project-member-rollback");
+    let projects_url = format!("{}/api/v1/projects", base_url());
+
+    // The first membership can be inserted, but the second violates the unique constraint.
+    let resp = admin
+        .post(projects_url.as_str())
+        .json(&json!({
+            "name": name,
+            "members": [
+                { "user_id": manager.id, "role": "manager" },
+                { "user_id": manager.id, "role": "viewer" },
+            ],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    // A retry with the same unique name proves the original project was rolled back.
+    let resp = admin
+        .post(projects_url.as_str())
+        .json(&json!({ "name": name }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let project: serde_json::Value = resp.json().await.unwrap();
+    let project_id = as_i64(&project, "id");
+    let creator_id = as_i64(&project, "created_by_id");
+
+    let resp = admin
+        .get(format!("{projects_url}/{project_id}/members"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let members: serde_json::Value = resp.json().await.unwrap();
+    let members = members.as_array().unwrap();
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0]["role"], "manager");
+    assert_eq!(members[0]["user"]["id"], creator_id);
+}
+
+#[tokio::test]
 async fn creating_a_project_with_members_but_no_manager_is_rejected() {
     let viewer = TestUser::create().await;
     let admin = admin_client().await;
