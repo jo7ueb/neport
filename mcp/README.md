@@ -26,3 +26,13 @@ reserved for MCP stdio messages.
 Create the token from an authenticated Neport session at
 `POST /api/v1/auth/tokens`. Use `read` for queries and add `write` only when
 the assistant must create or change data.
+
+To run from the release zip, extract it and install the package with
+`pip install ./mcp` from the extracted directory. In a client such as Claude
+Desktop, set the server command to the installed `neport-mcp` executable and
+pass the environment variables above in the server's `env` map.
+
+The plaintext token is shown when it is issued. Keep it out of logs and
+version control. Revoke unused tokens with `DELETE /api/v1/auth/tokens/{id}`.
+Write tools require both the `write` scope and the user's usual Neport
+permissions.

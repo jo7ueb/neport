@@ -6,7 +6,7 @@ Neport の**既定のデプロイ・開発手段は引き続き docker compose**
 がないため必須。具体的なサービスは問わない）、添付ファイルはCloud Storage
 （GCS）を使う構成を前提とする。
 
-コード側の対応内容は [CLAUDE.md](../CLAUDE.md) の「デプロイ」節を参照。要点だけ書くと:
+全体構成と関連コードは [アーキテクチャ](ARCHITECTURE.md#現行システム) を参照。Cloud Run では以下の構成を使う。
 
 - 添付ファイルの保存先は `backend/src/storage`（`AttachmentStorage` trait）で
   抽象化されており、`GCS_BUCKET` 環境変数が未設定ならローカルディスク
@@ -393,3 +393,7 @@ curl https://<neport-frontendのURL>/health
 デプロイ・動作確認ができない（GCP認証情報がないため）。`GcsStorage`の実装は
 コンパイルが通ることまでは確認済みだが、実バケットに対する読み書きは
 上記手順に従って利用者自身が確認する必要がある。
+
+## バックアップと復元（Compose・Cloud Run共通）
+
+管理画面の「バックアップ」から実行する。バックエンドが `pg_dump` を起動し、DBと添付ストレージを1つのアーカイブにまとめる。復元は事前にメンテナンスモードを有効にし、バックアップの内容でDBと添付を置き換える。復元確認には専用の環境を使う。[バックアップ処理](../backend/src/backup/handlers.rs)・[サブプロセスと接続情報の扱い](../backend/src/backup/service.rs)・[PostgreSQLクライアント](../backend/Dockerfile)
