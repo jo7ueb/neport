@@ -42,6 +42,7 @@ pub async fn create_project(
         Some(id) => id,
         None => workflows_repo::get_default_workflow_id(db).await?,
     };
+    let mut tx = db.begin().await.map_err(AppError::Database)?;
 
     let result = sqlx::query_as::<_, ProjectRow>(
         "INSERT INTO projects (name, description, workflow_id, created_by_id) VALUES ($1, $2, $3, $4) RETURNING id, name, description, workflow_id, hours_per_story_point, created_at, archived_at, created_by_id"
@@ -50,7 +51,7 @@ pub async fn create_project(
     .bind(description)
     .bind(workflow_id)
     .bind(creator_user_id)
-    .fetch_one(db)
+    .fetch_one(&mut *tx)
     .await;
 
     let project = match result {
@@ -71,13 +72,21 @@ pub async fn create_project(
     // access.rs) rather than leaving it open to every user like a legacy
     // pre-membership project.
     if initial_members.is_empty() {
-        members_repo::add_member(db, project.id, creator_user_id, ProjectRole::Manager, Some(creator_user_id)).await?;
+        members_repo::insert_member(
+            &mut *tx,
+            project.id,
+            creator_user_id,
+            ProjectRole::Manager,
+            Some(creator_user_id),
+        )
+        .await?;
     } else {
         for (user_id, role) in initial_members {
-            members_repo::add_member(db, project.id, *user_id, *role, Some(creator_user_id)).await?;
+            members_repo::insert_member(&mut *tx, project.id, *user_id, *role, Some(creator_user_id)).await?;
         }
     }
 
+    tx.commit().await.map_err(AppError::Database)?;
     Ok(project)
 }
 

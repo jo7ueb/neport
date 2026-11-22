@@ -1,4 +1,4 @@
-use sqlx::PgPool;
+use sqlx::{PgExecutor, PgPool};
 
 use crate::error::{AppError, Result};
 use crate::users::repo::{row_to_user, UserRow};
@@ -76,7 +76,13 @@ pub async fn count_managers(db: &PgPool, project_id: i64) -> Result<i64> {
     Ok(count)
 }
 
-pub async fn add_member(db: &PgPool, project_id: i64, user_id: i64, role: ProjectRole, added_by_id: Option<i64>) -> Result<ProjectMember> {
+pub(crate) async fn insert_member<'e>(
+    executor: impl PgExecutor<'e>,
+    project_id: i64,
+    user_id: i64,
+    role: ProjectRole,
+    added_by_id: Option<i64>,
+) -> Result<i64> {
     let result = sqlx::query_as::<_, (i64,)>(
         "INSERT INTO project_members (project_id, user_id, role, added_by_id) VALUES ($1, $2, $3, $4) RETURNING id",
     )
@@ -84,17 +90,20 @@ pub async fn add_member(db: &PgPool, project_id: i64, user_id: i64, role: Projec
     .bind(user_id)
     .bind(role.to_string())
     .bind(added_by_id)
-    .fetch_one(db)
+    .fetch_one(executor)
     .await;
 
-    let id = match result {
-        Ok((id,)) => id,
+    match result {
+        Ok((id,)) => Ok(id),
         Err(sqlx::Error::Database(db_err)) if db_err.constraint() == Some("project_members_project_id_user_id_key") => {
-            return Err(AppError::BadRequest("this user is already a member of this project".to_string()));
+            Err(AppError::BadRequest("this user is already a member of this project".to_string()))
         }
-        Err(e) => return Err(AppError::Database(e)),
-    };
+        Err(e) => Err(AppError::Database(e)),
+    }
+}
 
+pub async fn add_member(db: &PgPool, project_id: i64, user_id: i64, role: ProjectRole, added_by_id: Option<i64>) -> Result<ProjectMember> {
+    let id = insert_member(db, project_id, user_id, role, added_by_id).await?;
     let sql = format!(
         "SELECT {MEMBER_COLUMNS} FROM project_members pm JOIN users u ON pm.user_id = u.id WHERE pm.id = $1"
     );
