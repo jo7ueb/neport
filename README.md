@@ -27,12 +27,7 @@ docker compose up -d --build
 
 ## ドキュメント
 
-| 目的 | 参照先 |
-| --- | --- |
-| 起動・運用 | [ローカル環境](docs/LOCAL_SETUP.md)・[Cloud Runとバックアップ](docs/CLOUD_RUN_DEPLOY.md) |
-| API・外部連携 | [REST APIとMCP](docs/INTEGRATIONS.md) |
-| 開発・テスト | [開発の入口](AGENTS.md)・[現行アーキテクチャ](docs/ARCHITECTURE.md) |
-| プロダクトの今後 | [目的と原則](docs/PRODUCT.md)・[要求と未決事項](docs/REQUIREMENTS.md)・[ロードマップ](docs/ROADMAP.md) |
+[ドキュメント目次](docs/README.md)から、試用・設計・開発・運用それぞれの入口を探せます。
 
 ## ライセンスとフィードバック
 
