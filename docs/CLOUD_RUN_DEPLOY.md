@@ -1,24 +1,6 @@
 # Cloud Run へのデプロイ
 
-Neport の**既定のデプロイ・開発手段は引き続き docker compose**（[README.md](../README.md)参照）。
-本ドキュメントは、それに加えて Google Cloud Run 上でも動かせるようにするための
-追加の選択肢を説明する。DBはマネージドPostgres（Cloud Runに永続ローカルディスク
-がないため必須。具体的なサービスは問わない）、添付ファイルはCloud Storage
-（GCS）を使う構成を前提とする。
-
-全体構成と関連コードは [アーキテクチャ](ARCHITECTURE.md#現行システム) を参照。Cloud Run では以下の構成を使う。
-
-- 添付ファイルの保存先は `backend/src/storage`（`AttachmentStorage` trait）で
-  抽象化されており、`GCS_BUCKET` 環境変数が未設定ならローカルディスク
-  （docker composeでの今までの挙動）、設定されていればGCSバケットを使う。
-- フロントエンドの `nginx.conf` は環境変数（`BACKEND_UPSTREAM`）でAPIプロキシ先を
-  差し替えられるテンプレートになっている。未設定ならdocker composeと全く同じ
-  `http://backend:3000`になる。`frontend/docker-entrypoint.sh`がenvsubstで
-  静的な`proxy_pass`先に埋め込むため、DNS解決はnginx起動時に一度だけ
-  （`resolver`ディレクティブは不要）。
-- ブラウザから見えるオリジンは`frontend`のCloud Run URLひとつだけで、
-  `backend`へはnginxがサーバーサイドで中継する（Cookie/CSRFのSameSite=Lax
-  前提を変えないため）。
+Cloud RunではマネージドPostgreSQLと添付用のCloud Storageバケットを使う。フロントエンドのnginxが同一オリジンのAPIリクエストをバックエンドへ転送する。[アーキテクチャ](ARCHITECTURE.md#現行システム)
 
 ## 前提条件
 
@@ -42,48 +24,10 @@ Neport の**既定のデプロイ・開発手段は引き続き docker compose**
 
 ## CI/CD（GitHub Actions）による自動デプロイ
 
-2つのワークフローに分かれている（テストは全ブランチの参考情報、デプロイは
-masterかつテストgreenの場合のみという要件を分離するため）:
+- すべてのブランチのpushで `Test & coverage` が `make cov` を実行し、結果を成果物に保存する。[テストのワークフロー](../.github/workflows/test.yml)
+- `master` のテストが成功すると、Cloud Runのデプロイが自動で始まる。テスト対象のコミットから3イメージをビルドし、DB移行、バックエンド、フロントエンドの順に反映する。[デプロイのワークフロー](../.github/workflows/deploy.yml)
 
-1. [.github/workflows/test.yml](../.github/workflows/test.yml)（`Test & coverage`）:
-   **全ブランチ**への push で実行される参考用CI（master限定ではない。まだ
-   存在しないdevelop等の開発系ブランチも含む）。`make cov`
-   （`backend/scripts/run-coverage.sh`）で、ユニットテスト+統合テスト
-   (`backend/tests/*.rs`)を実行しつつ`cargo-llvm-cov`でカバレッジを計測。
-   レポート(HTML/lcov)はActionsのartifactとして保存される。このワークフロー
-   自身はデプロイを一切トリガーしない。
-2. [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)（`Deploy to
-   Cloud Run`）: 上記`Test & coverage`が**masterブランチで**成功
-   (`workflow_run`イベント、`conclusion == 'success'`)した時だけ発火する
-   （手動承認ステップなしの完全自動）。backend/frontend/migratorの3イメージを
-   ビルドしてArtifact Registryへpush、migratorイメージを本番DBの
-   `DATABASE_URL`向けにその場で`docker run`してマイグレーション適用、
-   `neport-backend`→`neport-frontend`の順でCloud Runへデプロイ（frontendの
-   `BACKEND_UPSTREAM`はbackendデプロイ直後に取得したURLを使う）。
-   デプロイするコミットは`workflow_run`イベントの`head_sha`
-   （テストされたコミットそのもの）を明示的に使う。frontendイメージの
-   ビルドには`--build-arg GIT_COMMIT="${IMAGE_TAG:0:7}"`を渡しており、
-   フッターの表示バージョン（下記「フッターのバージョン表示」参照）が
-   実際のデプロイ済みコミットと一致するようにしている。
-
-**Docker認証にはWIF impersonationと相性の悪い`gcloud auth
-configure-docker`を使わない** - `google-github-actions/auth@v2`ステップに
-`token_format: access_token`を指定してアクセストークンを直接取得し、
-`docker login -u oauth2accesstoken --password-stdin`でログインしている
-（[deploy.yml](../.github/workflows/deploy.yml)参照）。`gcloud auth
-configure-docker`が登録する`docker-credential-gcloud`ヘルパーは、トークン
-リフレッシュ時にサービスアカウントのGaia IDを引こうとして失敗する
-（サービスアカウントはGaia IDを持たないため常に失敗する - 実際に踏んだ
-不具合。`docker push`が`ERROR: (gcloud.auth.docker-helper) ... Gaia id not
-found for email ***`→`denied: Unauthenticated request ...
-artifactregistry.repositories.uploadArtifacts ...`で失敗する形で発現した）。
-このヘルパーを経由しない直接ログインなら、WIFでimpersonateした
-サービスアカウントの認証情報でも問題なく動く。
-
-GCPへの認証はWorkload Identity Federation（キーを保持しないkeyless方式）を
-使う。以下は**一度だけ**手動で行う初期セットアップ（`gcloud`はログイン済みかつ
-対象プロジェクトが選択されている前提。このリポジトリの開発環境には認証情報が
-ないため、これらのコマンドは利用者自身の端末で実行する）。
+自動デプロイの初期設定にはWorkload Identity Federationを使用する。ワークフローは発行されたアクセストークンでArtifact Registryにログインする。
 
 ### 1. Workload Identity Federation + デプロイ用サービスアカウント
 
@@ -304,34 +248,9 @@ gcloud run deploy neport-frontend \
   `resolver`ディレクティブは不要 - 実際に試行錯誤した経緯は
   [nginx.conf](../nginx.conf)のコメント参照）。
 
-### 監査ログのIPアドレスとCloud Runの2段プロキシ構成
+### 監査ログのIPアドレス
 
-監査ログ（`/admin/audit-log`、`backend/src/audit/`）にはログイン・ログアウト等の
-実行者IPアドレスを記録している。docker-composeでは`nginx.conf`が
-`X-Real-IP $remote_addr`をそのままbackendに渡していたが、Cloud Runでは
-`frontend`（nginx）自身がGoogleの内部プロキシ（GFE）から接続を受けるため、
-`$remote_addr`はブラウザのIPではなくGFE自身のIPになってしまう。
-
-そこで`nginx.conf`に`$true_client_ip`という`map`を追加し、Cloud Runが
-`frontend`サービスへの直接のリクエストに対して確実に設定する`X-Forwarded-For`の
-先頭エントリ（Google公式ドキュメントで明記）を優先し、それが無いトポロジ
-（docker-compose、ローカルの`cargo run`+curl）では`$remote_addr`にフォールバック
-するようにした。この値を`X-Real-IP`としてbackendに転送する。
-
-**未検証のまま踏み込んだ判断**: `frontend`（nginx）が`backend`のCloud Run URLを
-呼ぶのは「Cloud Run→Cloud Runの2段目の呼び出し」になるが、この2段目でGFEが
-`X-Forwarded-For`を（前段の値を維持して）追記するのか、上書きしてしまうのかは
-Google公式ドキュメントに明記がなく、断定できなかった。そのため
-`backend/src/audit/client_ip.rs`の`ClientIp`抽出は`X-Forwarded-For`ではなく
-`X-Real-IP`を優先する設計にしている - `X-Real-IP`は`frontend`のnginxが1段目
-（ここは確実に正しい）で確定させて設定する値であり、Cloud Run自身が転送用に
-管理するヘッダーではない（GFEが書き換える理由を持つのは`X-Forwarded-For`/
-`X-Forwarded-Proto`のような標準の転送ヘッダーのみと考えられる）ため、2段目を
-素通りする可能性がより高いという判断。**ただしこれはこの環境にGCP認証情報が
-なく実際にCloud Runへデプロイして検証できなかったための推測であり、確証はない。**
-デプロイ後、監査ログに記録されたIPが実際に自分のインターネット側IPと一致するかを
-確認してほしい。一致しない場合は、`nginx.conf`の`$true_client_ip`マップか、
-GFEが2段目で`X-Real-IP`ヘッダー自体を素通ししていない可能性を疑うこと。
+nginxが `X-Real-IP` へ値を設定し、バックエンドの監査ログがこれを優先する。デプロイ後に監査ログの記録を接続元IPと照合する。異なる場合は各プロキシが転送するヘッダーを確認する。[nginx設定](../nginx.conf)・[IP抽出](../backend/src/audit/client_ip.rs)
 
 ## 5. カスタムドメイン（任意）
 
@@ -388,11 +307,6 @@ curl https://<neport-frontendのURL>/health
 
 ブラウザで`https://<neport-frontendのURL>/`にアクセスし、ログイン・チケット作成・
 添付ファイルのアップロード/ダウンロードが問題なく動作することを確認する。
-
-**注記**: GCS/マネージドPostgres/Cloud Run自体はこのリポジトリの開発環境からは実際に
-デプロイ・動作確認ができない（GCP認証情報がないため）。`GcsStorage`の実装は
-コンパイルが通ることまでは確認済みだが、実バケットに対する読み書きは
-上記手順に従って利用者自身が確認する必要がある。
 
 ## バックアップと復元（Compose・Cloud Run共通）
 

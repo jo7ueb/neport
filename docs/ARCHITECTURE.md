@@ -2,8 +2,6 @@
 
 ## 現行システム
 
-確認基準はコミット `bbae4ff` の静的レビュー。以下は実装の説明であり、データ量・本番での発生頻度・負荷試験結果を示すものではない。
-
 | 境界 | 責務と入口 |
 |---|---|
 | ブラウザ | React Router の画面を共通レイアウトに載せ、TanStack Query がサーバー状態を取得・更新する。HTTPクライアントとTypeScriptの型はフロント側にある。[ルート](../frontend/src/App.tsx)・[レイアウト](../frontend/src/components/Layout.tsx)・[APIクライアント](../frontend/src/api/client.ts)・[型](../frontend/src/types/models.ts) |
@@ -31,4 +29,4 @@ Cookieセッションでは変更系リクエストにCSRFトークンを照合�
 | チケットの更新は旧値を読んで全項目を書き戻し、活動履歴はその後に記録。[更新SQL](../backend/src/tickets/repo.rs)・[履歴記録](../backend/src/tickets/handlers.rs) | 同時編集の消失、履歴と現在値の不一致。履歴を使う集計にも波及。 | 更新・履歴を同じトランザクションにし、古い版からの操作を検出する。 |
 | 案件ごとの全件取得に加え、通常の票の読み込みは子孫数を再帰集計。[個人画面](../frontend/src/pages/DashboardPage.tsx)・[取得SQL](../backend/src/tickets/repo.rs) | 案件数・ツリー深度が増えると横断画面の負荷が増す。 | 可視性付きの軽い一覧をサーバーでページング。索引追加は代表データで実行計画を確認して判断。 |
 
-設計案は現在の単一APIとDBを起点に、必要な境界から改修する。スキーマ再構築も比較対象とする。移行、案件間移動、列対応、工数の締め境界の判断は[未決事項](REQUIREMENTS.md)、影響確認と導入順は[ロードマップ](ROADMAP.md)に集約する。
+既存データの件数・整合性、並行操作、深いWBSでの負荷は対象の改修時に検証する。採用する設計と作業順は[要求台帳](REQUIREMENTS.md)と[追跡Issue #2](https://github.com/jo7ueb/neport/issues/2)を参照。
