@@ -7,7 +7,7 @@ import { getErrorMessage } from '../i18n/apiErrors'
 import { TicketPicker } from './TicketPicker'
 import type { Ticket } from '../types/models'
 
-export function DependencyList({ ticketId }: { ticketId: number }) {
+export function DependencyList({ ticketId, projectId }: { ticketId: number; projectId: number }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { data: rawData, isLoading } = useQuery({
@@ -112,6 +112,7 @@ export function DependencyList({ ticketId }: { ticketId: number }) {
           <option value="successor">{t('dependency.addAsSuccessor')}</option>
         </select>
         <TicketPicker
+          projectId={projectId}
           value={otherTicket}
           onChange={setOtherTicket}
           placeholder={t('dependency.idPlaceholder')}

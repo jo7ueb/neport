@@ -149,7 +149,7 @@ pub async fn count_projects(db: &PgPool, archived: bool, user_id: i64, is_site_a
     Ok(count)
 }
 
-pub async fn is_archived(db: &PgPool, id: i64) -> Result<bool> {
+pub async fn is_archived<'e>(db: impl sqlx::PgExecutor<'e>, id: i64) -> Result<bool> {
     let row: Option<(Option<chrono::DateTime<chrono::Utc>>,)> =
         sqlx::query_as("SELECT archived_at FROM projects WHERE id = $1")
             .bind(id)
@@ -189,7 +189,7 @@ pub async fn get_ticket_summary(db: &PgPool, project_id: i64) -> Result<ProjectT
          LEFT JOIN tickets t
            ON t.project_id = p.id
           AND t.deleted_at IS NULL
-          AND NOT EXISTS (SELECT 1 FROM tickets child WHERE child.parent_ticket_id = t.id AND child.deleted_at IS NULL)
+          AND NOT EXISTS (SELECT 1 FROM tickets child WHERE child.parent_ticket_id = t.id AND child.project_id = t.project_id AND child.deleted_at IS NULL)
           AND t.status_id IN (
               SELECT id FROM workflow_statuses WHERE category NOT IN ('done', 'confirmed')
           )

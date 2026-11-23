@@ -66,9 +66,10 @@ async def add_project_member(project_id: int, user_id: int, role: str) -> str:
 
 
 @mcp.tool()
-async def search_tickets(q: str) -> str:
-    """[READ ONLY] Search visible tickets by text."""
-    return await call("GET", "/tickets/search", params={"q": q})
+async def search_tickets(q: str, project_id: int | None = None) -> str:
+    """[READ ONLY] Search visible tickets by text, optionally within one project."""
+    params = {"q": q} if project_id is None else {"q": q, "project_id": project_id}
+    return await call("GET", "/tickets/search", params=params)
 
 
 @mcp.tool()
@@ -85,10 +86,22 @@ async def create_ticket(project_id: int, title: str, description: str | None = N
 
 
 @mcp.tool()
-async def update_ticket(ticket_id: int, title: str | None = None, description: str | None = None, assignee_id: int | None = None) -> str:
-    """[MUTATION] Update editable ticket fields. Confirm the intended changes; project permission is required."""
-    body = {k: v for k, v in {"title": title, "description": description, "assignee_id": assignee_id}.items() if v is not None}
-    return await call("PATCH", f"/tickets/{ticket_id}", json=body)
+async def update_ticket(
+    ticket_id: int,
+    title: str | None = None,
+    description: str | None = None,
+    assignee_id: int | None = None,
+    expected_updated_at: str | None = None,
+) -> str:
+    """[MUTATION] Update editable fields. Pass updated_at from get_ticket to detect conflicts.
+    On HTTP 409, fetch the latest ticket and review the changes before retrying."""
+    fields = {
+        "title": title,
+        "description": description,
+        "assignee_id": assignee_id,
+        "expected_updated_at": expected_updated_at,
+    }
+    return await call("PATCH", f"/tickets/{ticket_id}", json={k: v for k, v in fields.items() if v is not None})
 
 
 @mcp.tool()
@@ -99,8 +112,12 @@ async def add_comment(ticket_id: int, body: str) -> str:
 
 @mcp.tool()
 async def add_dependency(ticket_id: int, depends_on_ticket_id: int) -> str:
-    """[MUTATION] Add a dependency edge. Confirm the direction; circular dependencies are rejected."""
-    return await call("POST", f"/tickets/{ticket_id}/dependencies/", json={"depends_on_ticket_id": depends_on_ticket_id})
+    """[MUTATION] Declare that this ticket needs another ticket in the same project to finish first."""
+    return await call(
+        "POST",
+        f"/tickets/{ticket_id}/dependencies",
+        json={"direction": "predecessor", "other_ticket_id": depends_on_ticket_id},
+    )
 
 
 @mcp.tool()

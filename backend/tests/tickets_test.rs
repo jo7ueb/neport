@@ -668,3 +668,107 @@ async fn ticket_list_is_paginated() {
     let page2: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(page2["items"].as_array().unwrap().len(), 1, "the third ticket should be on the second page");
 }
+
+#[tokio::test]
+async fn parent_and_milestone_must_belong_to_the_tickets_project() {
+    let user = TestUser::create().await;
+    let project_id = as_i64(&user.create_project(&unique("ticket-own-project")).await, "id");
+    let other_id = as_i64(&user.create_project(&unique("ticket-other-project")).await, "id");
+    let parent = user.create_ticket(other_id, None, "Other parent").await;
+    let milestone: serde_json::Value = user
+        .client
+        .post(format!("{}/api/v1/projects/{other_id}/milestones", base_url()))
+        .json(&json!({ "name": "Other milestone" }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let ticket_id = as_i64(&user.create_ticket(project_id, None, "Original").await, "id");
+    let tickets_url = format!("{}/api/v1/tickets", base_url());
+    let ticket_url = format!("{tickets_url}/{ticket_id}");
+
+    for (field, value) in [("parent_ticket_id", parent["id"].clone()), ("milestone_id", milestone["id"].clone())] {
+        let create = user.client.post(&tickets_url)
+            .json(&json!({ "project_id": project_id, "title": "Rejected", (field): value }))
+            .send().await.unwrap();
+        assert_eq!(create.status(), 400, "create must reject {field}");
+        let update = user.client.patch(&ticket_url)
+            .json(&json!({ "title": "Rejected", (field): value }))
+            .send().await.unwrap();
+        assert_eq!(update.status(), 400, "update must reject {field}");
+    }
+    let current: serde_json::Value = user.client.get(&ticket_url).send().await.unwrap().json().await.unwrap();
+    assert_eq!(current["title"], "Original");
+    assert!(current["parent_ticket_id"].is_null());
+    assert!(current["milestone_id"].is_null());
+}
+
+#[tokio::test]
+async fn overlapping_ticket_edits_with_the_same_version_have_one_winner() {
+    let user = TestUser::create().await;
+    let project_id = as_i64(&user.create_project(&unique("ticket-conflict")).await, "id");
+    let ticket = user.create_ticket(project_id, None, "Original").await;
+    let id = as_i64(&ticket, "id");
+    let url = format!("{}/api/v1/tickets/{id}", base_url());
+    let left = user.client.patch(&url)
+        .json(&json!({ "title": "Left", "expected_updated_at": ticket["updated_at"] }));
+    let right = user.client.patch(&url)
+        .json(&json!({ "title": "Right", "expected_updated_at": ticket["updated_at"] }));
+    let (left, right) = tokio::join!(left.send(), right.send());
+    let left = left.unwrap();
+    let right = right.unwrap();
+    let mut statuses = [left.status().as_u16(), right.status().as_u16()];
+    statuses.sort_unstable();
+    assert_eq!(statuses, [200, 409]);
+    let winner = if left.status() == 200 { "Left" } else { "Right" };
+    let activity: serde_json::Value = user.client.get(format!("{url}/activity"))
+        .send().await.unwrap().json().await.unwrap();
+    let title_changes: Vec<_> = activity["items"].as_array().unwrap().iter()
+        .filter(|row| row["field_name"] == "title").collect();
+    assert_eq!(title_changes.len(), 1);
+    assert_eq!(title_changes[0]["from_text"], "Original");
+    assert_eq!(title_changes[0]["to_text"], winner);
+    let stored: serde_json::Value = user.client.get(&url).send().await.unwrap().json().await.unwrap();
+    assert_eq!(stored["title"], winner);
+    assert_ne!(stored["updated_at"], ticket["updated_at"]);
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL pointing to the disposable database used by the test API"]
+async fn activity_write_failure_rolls_back_ticket_and_audit() {
+    let user = TestUser::create().await;
+    let project_id = as_i64(&user.create_project(&unique("ticket-history-failure")).await, "id");
+    let ticket = user.create_ticket(project_id, None, "Original").await;
+    let id = as_i64(&ticket, "id");
+    let url = format!("{}/api/v1/tickets/{id}", base_url());
+    let db = sqlx::PgPool::connect(&std::env::var("TEST_DATABASE_URL").unwrap()).await.unwrap();
+    // This constraint is specific to the test ticket and fails its second history insert.
+    let constraint = format!("test_history_failure_{id}");
+    sqlx::query(&format!(
+        "ALTER TABLE ticket_activity_log ADD CONSTRAINT {constraint}
+         CHECK (ticket_id <> {id} OR field_name IS DISTINCT FROM 'description') NOT VALID"
+    )).execute(&db).await.unwrap();
+    let access_count = || sqlx::query_scalar::<_, i64>("SELECT count(*) FROM access_log WHERE actor_id = $1")
+        .bind(user.id)
+        .fetch_one(&db);
+    let count_before = access_count().await;
+    let response = user.client.patch(&url)
+        .json(&json!({ "title": "Updated", "description": "New description" }))
+        .send().await;
+    sqlx::query(&format!("ALTER TABLE ticket_activity_log DROP CONSTRAINT {constraint}"))
+        .execute(&db).await.unwrap();
+
+    assert_eq!(response.unwrap().status(), 500);
+    assert_eq!(access_count().await.unwrap(), count_before.unwrap());
+    let stored: serde_json::Value = user.client.get(&url).send().await.unwrap().json().await.unwrap();
+    assert_eq!(stored, ticket);
+    let activity: serde_json::Value = user.client.get(format!("{url}/activity"))
+        .send().await.unwrap().json().await.unwrap();
+    let entries = activity["items"].as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["activity_type"], "created");
+}

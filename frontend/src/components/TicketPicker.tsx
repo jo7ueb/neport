@@ -5,6 +5,7 @@ import { searchTickets } from '../api/tickets'
 import type { Ticket } from '../types/models'
 
 interface TicketPickerProps {
+  projectId: number
   value: Ticket | null
   onChange: (ticket: Ticket | null) => void
   placeholder?: string
@@ -17,7 +18,7 @@ interface TicketPickerProps {
 // Same search-as-you-type dropdown as the "#" mention picker in
 // MarkdownField, but as a standalone input for pickers that aren't embedded
 // in a textarea (e.g. the dependency form).
-export function TicketPicker({ value, onChange, placeholder, className, excludeId }: TicketPickerProps) {
+export function TicketPicker({ projectId, value, onChange, placeholder, className, excludeId }: TicketPickerProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -25,8 +26,8 @@ export function TicketPicker({ value, onChange, placeholder, className, excludeI
   const containerRef = useRef<HTMLDivElement>(null)
 
   const { data: rawResults } = useQuery({
-    queryKey: ['tickets', 'search', query],
-    queryFn: () => searchTickets(query),
+    queryKey: ['tickets', 'search', query, projectId],
+    queryFn: () => searchTickets(query, projectId),
     enabled: open,
     staleTime: 30_000,
   })

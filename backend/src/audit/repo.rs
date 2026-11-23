@@ -256,7 +256,21 @@ pub async fn record(
     to_text: Option<&str>,
     ip_address: Option<&str>,
 ) -> Result<()> {
-    let access_log_id = super::access_log::record(db, actor_id, ip_address).await?;
+    let mut conn = db.acquire().await?;
+    record_on(&mut conn, actor_id, action, target_type, target_id, from_text, to_text, ip_address).await
+}
+
+pub async fn record_on(
+    conn: &mut sqlx::PgConnection,
+    actor_id: i64,
+    action: &str,
+    target_type: &str,
+    target_id: Option<i64>,
+    from_text: Option<&str>,
+    to_text: Option<&str>,
+    ip_address: Option<&str>,
+) -> Result<()> {
+    let access_log_id = super::access_log::record(&mut *conn, actor_id, ip_address).await?;
     sqlx::query(
         "INSERT INTO audit_log (actor_id, action, target_type, target_id, from_text, to_text, access_log_id, occurred_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())",
@@ -268,7 +282,7 @@ pub async fn record(
     .bind(from_text)
     .bind(to_text)
     .bind(access_log_id)
-    .execute(db)
+    .execute(&mut *conn)
     .await
     .map_err(AppError::Database)?;
     Ok(())

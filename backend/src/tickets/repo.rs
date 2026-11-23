@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 use std::collections::HashMap;
 
 use crate::error::{AppError, Result};
@@ -48,14 +48,14 @@ pub(crate) struct TicketRow {
 // the DB).
 pub(crate) const TICKET_SELECT_COLUMNS: &str = "t.id, t.project_id, t.parent_ticket_id, t.reporter_id, t.assignee_id, t.title, t.description, t.story_points, t.start_date, t.end_date, t.due_date, t.milestone_id, t.created_at, t.updated_at, ws.id AS status_id, ws.workflow_id AS status_workflow_id, ws.key AS status_key, ws.label AS status_label, ws.category AS status_category, ws.position AS status_position, ws.is_initial AS status_is_initial, \
     (WITH RECURSIVE descendants AS ( \
-        SELECT id, ARRAY[t.id, id] AS path FROM tickets WHERE parent_ticket_id = t.id AND deleted_at IS NULL \
+        SELECT id, ARRAY[t.id, id] AS path FROM tickets WHERE parent_ticket_id = t.id AND project_id = t.project_id AND deleted_at IS NULL \
         UNION ALL \
-        SELECT c.id, d.path || c.id FROM tickets c JOIN descendants d ON c.parent_ticket_id = d.id WHERE c.deleted_at IS NULL AND NOT (c.id = ANY(d.path)) \
+        SELECT c.id, d.path || c.id FROM tickets c JOIN descendants d ON c.parent_ticket_id = d.id WHERE c.project_id = t.project_id AND c.deleted_at IS NULL AND NOT (c.id = ANY(d.path)) \
      ) SELECT COUNT(*) FROM descendants) AS child_ticket_count, \
     (WITH RECURSIVE descendants AS ( \
-        SELECT id, ARRAY[t.id, id] AS path FROM tickets WHERE parent_ticket_id = t.id AND deleted_at IS NULL \
+        SELECT id, ARRAY[t.id, id] AS path FROM tickets WHERE parent_ticket_id = t.id AND project_id = t.project_id AND deleted_at IS NULL \
         UNION ALL \
-        SELECT c.id, d.path || c.id FROM tickets c JOIN descendants d ON c.parent_ticket_id = d.id WHERE c.deleted_at IS NULL AND NOT (c.id = ANY(d.path)) \
+        SELECT c.id, d.path || c.id FROM tickets c JOIN descendants d ON c.parent_ticket_id = d.id WHERE c.project_id = t.project_id AND c.deleted_at IS NULL AND NOT (c.id = ANY(d.path)) \
      ) SELECT COUNT(*) FROM descendants dd JOIN tickets dt ON dt.id = dd.id JOIN workflow_statuses dws ON dt.status_id = dws.id WHERE dws.category IN ('done', 'confirmed')) AS child_done_ticket_count";
 // The "AND t.deleted_at IS NULL" lives in the JOIN condition (not a WHERE
 // clause) so this composes with every caller below, which all append their
@@ -99,9 +99,71 @@ pub(crate) fn row_to_ticket(row: TicketRow) -> Ticket {
     }
 }
 
+// Serialize ticket graph writes in a project, including traversal checks and soft deletion.
+pub async fn lock_project(db: &mut PgConnection, project_id: i64) -> Result<()> {
+    sqlx::query_scalar::<_, i64>("SELECT id FROM projects WHERE id = $1 FOR NO KEY UPDATE")
+        .bind(project_id)
+        .fetch_optional(db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    Ok(())
+}
+
+pub async fn validate_references(
+    db: &mut PgConnection,
+    project_id: i64,
+    parent_id: Option<i64>,
+    milestone_id: Option<i64>,
+) -> Result<()> {
+    if let Some(parent_id) = parent_id {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM tickets WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL)",
+        )
+        .bind(parent_id)
+        .bind(project_id)
+        .fetch_one(&mut *db)
+        .await?;
+        if !exists {
+            return Err(AppError::BadRequest("parent ticket must be active in the same project".into()));
+        }
+    }
+
+    if let Some(milestone_id) = milestone_id {
+        let milestone: Option<i64> = sqlx::query_scalar(
+            "SELECT id FROM milestones WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL FOR SHARE",
+        )
+        .bind(milestone_id)
+        .bind(project_id)
+        .fetch_optional(db)
+        .await?;
+        if milestone.is_none() {
+            return Err(AppError::BadRequest("milestone must be active in the same project".into()));
+        }
+    }
+    Ok(())
+}
+
+pub async fn milestone_text(db: &mut PgConnection, project_id: i64, id: Option<i64>) -> Result<Option<String>> {
+    sqlx::query_scalar("SELECT name FROM milestones WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL")
+        .bind(id)
+        .bind(project_id)
+        .fetch_optional(db)
+        .await
+        .map_err(AppError::Database)
+}
+
+pub async fn parent_ticket_text(db: &mut PgConnection, project_id: i64, id: Option<i64>) -> Result<Option<String>> {
+    sqlx::query_scalar("SELECT '#' || id || ' ' || title FROM tickets WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL")
+        .bind(id)
+        .bind(project_id)
+        .fetch_optional(db)
+        .await
+        .map_err(AppError::Database)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn create_ticket(
-    db: &PgPool,
+    db: &mut PgConnection,
     project_id: i64,
     parent_ticket_id: Option<i64>,
     reporter_id: i64,
@@ -116,11 +178,11 @@ pub async fn create_ticket(
 ) -> Result<Ticket> {
     let (workflow_id,): (i64,) = sqlx::query_as("SELECT workflow_id FROM projects WHERE id = $1")
         .bind(project_id)
-        .fetch_optional(db)
+        .fetch_optional(&mut *db)
         .await
         .map_err(AppError::Database)?
         .ok_or(AppError::NotFound)?;
-    let status_id = workflows_repo::get_initial_status_id(db, workflow_id).await?;
+    let status_id = workflows_repo::get_initial_status_id(&mut *db, workflow_id).await?;
 
     // INSERT ... RETURNING only exposes the tickets table, but row_to_ticket
     // needs the joined workflow_statuses columns too - simplest is to insert,
@@ -140,14 +202,14 @@ pub async fn create_ticket(
     .bind(end_date)
     .bind(due_date)
     .bind(milestone_id)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await
     .map_err(AppError::Database)?;
 
     get_ticket(db, inserted_id.0).await?.ok_or(AppError::InternalServerError)
 }
 
-pub async fn get_ticket(db: &PgPool, id: i64) -> Result<Option<Ticket>> {
+pub async fn get_ticket<'e>(db: impl sqlx::PgExecutor<'e>, id: i64) -> Result<Option<Ticket>> {
     let sql = format!("SELECT {TICKET_SELECT_COLUMNS} {TICKET_FROM_JOIN} WHERE t.id = $1");
     sqlx::query_as::<_, TicketRow>(&sql)
         .bind(id)
@@ -200,10 +262,11 @@ pub async fn count_tickets_for_project(db: &PgPool, project_id: i64, filter: &Ti
     Ok(count)
 }
 
-pub async fn list_children(db: &PgPool, parent_id: i64) -> Result<Vec<Ticket>> {
-    let sql = format!("SELECT {TICKET_SELECT_COLUMNS} {TICKET_FROM_JOIN} WHERE t.parent_ticket_id = $1 ORDER BY t.created_at ASC");
+pub async fn list_children(db: &PgPool, parent_id: i64, project_id: i64) -> Result<Vec<Ticket>> {
+    let sql = format!("SELECT {TICKET_SELECT_COLUMNS} {TICKET_FROM_JOIN} WHERE t.parent_ticket_id = $1 AND t.project_id = $2 ORDER BY t.created_at ASC");
     sqlx::query_as::<_, TicketRow>(&sql)
         .bind(parent_id)
+        .bind(project_id)
         .fetch_all(db)
         .await
         .map_err(AppError::Database)
@@ -215,7 +278,7 @@ pub async fn list_children(db: &PgPool, parent_id: i64) -> Result<Vec<Ticket>> {
 // exact id or a substring of the title. `query` is used verbatim as a plain
 // value (not concatenated into SQL), so no escaping is needed beyond what
 // ILIKE's own `%`/`_` wildcards already require.
-pub async fn search_tickets(db: &PgPool, query: &str, limit: i64, user_id: i64, is_site_admin: bool) -> Result<Vec<Ticket>> {
+pub async fn search_tickets(db: &PgPool, query: &str, limit: i64, user_id: i64, is_site_admin: bool, project_id: Option<i64>) -> Result<Vec<Ticket>> {
     let pattern = format!("%{}%", query.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
     // Same project visibility rule as projects::repo::list_projects: a
     // site admin sees everything, otherwise only legacy (memberless)
@@ -223,6 +286,7 @@ pub async fn search_tickets(db: &PgPool, query: &str, limit: i64, user_id: i64, 
     let sql = format!(
         "SELECT {TICKET_SELECT_COLUMNS} {TICKET_FROM_JOIN} \
          WHERE ($1 = '' OR t.id::text = $1 OR t.title ILIKE $2) \
+         AND ($6::bigint IS NULL OR t.project_id = $6) \
          AND ($4::bool OR NOT EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = t.project_id) \
               OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = t.project_id AND pm.user_id = $5)) \
          ORDER BY (t.id::text = $1) DESC, t.id DESC LIMIT $3"
@@ -233,6 +297,7 @@ pub async fn search_tickets(db: &PgPool, query: &str, limit: i64, user_id: i64, 
         .bind(limit)
         .bind(is_site_admin)
         .bind(user_id)
+        .bind(project_id)
         .fetch_all(db)
         .await
         .map_err(AppError::Database)
@@ -258,7 +323,10 @@ pub async fn get_ticket_tree(db: &PgPool, project_id: i64) -> Result<Vec<TicketN
                    ARRAY[t.id]::bigint[] AS id_path
             {TICKET_FROM_JOIN}
             JOIN ticket_order ord ON ord.id = t.id
-            WHERE t.project_id = $1 AND t.parent_ticket_id IS NULL
+            WHERE t.project_id = $1 AND NOT EXISTS (
+                SELECT 1 FROM tickets parent
+                WHERE parent.id = t.parent_ticket_id AND parent.project_id = $1
+            )
             UNION ALL
             SELECT {TICKET_SELECT_COLUMNS}, tt.depth + 1,
                    tt.order_path || ord.sibling_order,
@@ -267,7 +335,7 @@ pub async fn get_ticket_tree(db: &PgPool, project_id: i64) -> Result<Vec<TicketN
             JOIN workflow_statuses ws ON t.status_id = ws.id AND t.deleted_at IS NULL
             JOIN ticket_tree tt ON t.parent_ticket_id = tt.id
             JOIN ticket_order ord ON ord.id = t.id
-            WHERE NOT (t.id = ANY(tt.id_path))
+            WHERE t.project_id = $1 AND NOT (t.id = ANY(tt.id_path))
         )
         SELECT {TICKET_SELECT_COLUMNS_BARE} FROM ticket_tree ORDER BY order_path"
     );
@@ -284,16 +352,11 @@ pub async fn get_ticket_tree(db: &PgPool, project_id: i64) -> Result<Vec<TicketN
     for row in flat_rows {
         let ticket = row_to_ticket(row);
         let id = ticket.id;
-        let parent_ticket_id = ticket.parent_ticket_id;
 
         let node = TicketNode {
             ticket,
             children: Vec::new(),
         };
-
-        if parent_ticket_id.is_none() {
-            root_nodes.push(id);
-        }
 
         ordered_ids.push(id);
         ticket_map.insert(id, node);
@@ -308,30 +371,31 @@ pub async fn get_ticket_tree(db: &PgPool, project_id: i64) -> Result<Vec<TicketN
     // could silently drop the other (and everything under it) from the tree.
     for id in ordered_ids.into_iter().rev() {
         let parent_id = ticket_map.get(&id).and_then(|n| n.ticket.parent_ticket_id);
-        if let Some(parent_id) = parent_id {
+        if let Some(parent_id) = parent_id.filter(|id| ticket_map.contains_key(id)) {
             if let Some(child_node) = ticket_map.remove(&id) {
                 if let Some(parent_node) = ticket_map.get_mut(&parent_id) {
                     parent_node.children.insert(0, child_node);
                 }
             }
+        } else {
+            root_nodes.push(id);
         }
     }
 
     let result = root_nodes
         .into_iter()
+        .rev()
         .filter_map(|id| ticket_map.remove(&id))
         .collect();
 
     Ok(result)
 }
 
-pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result<Ticket> {
-    let current = get_ticket(db, id)
-        .await?
-        .ok_or(AppError::NotFound)?;
+pub async fn update_ticket(db: &mut PgConnection, current: &Ticket, update: TicketUpdate) -> Result<Ticket> {
+    let id = current.id;
 
-    let title = update.title.unwrap_or(current.title);
-    let description = update.description.or(current.description);
+    let title = update.title.unwrap_or_else(|| current.title.clone());
+    let description = update.description.or_else(|| current.description.clone());
     let story_points = update.story_points.unwrap_or(current.story_points);
     let assignee_id = update.assignee_id.unwrap_or(current.assignee_id);
     let start_date = update.start_date.unwrap_or(current.start_date);
@@ -344,10 +408,10 @@ pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result
         Some(new_status_id) if new_status_id != current.status.id => {
             let (workflow_id,): (i64,) = sqlx::query_as("SELECT workflow_id FROM projects WHERE id = $1")
                 .bind(current.project_id)
-                .fetch_one(db)
+                .fetch_one(&mut *db)
                 .await
                 .map_err(AppError::Database)?;
-            if !workflows_repo::is_transition_allowed(db, workflow_id, current.status.id, new_status_id).await? {
+            if !workflows_repo::is_transition_allowed(&mut *db, workflow_id, current.status.id, new_status_id).await? {
                 return Err(AppError::BadRequest(
                     "this status transition is not allowed by the project's workflow".to_string(),
                 ));
@@ -363,7 +427,7 @@ pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result
             let (new_status_category,): (String,) =
                 sqlx::query_as("SELECT category FROM workflow_statuses WHERE id = $1")
                     .bind(new_status_id)
-                    .fetch_one(db)
+                    .fetch_one(&mut *db)
                     .await
                     .map_err(AppError::Database)?;
             if (new_status_category == "done" || new_status_category == "confirmed")
@@ -380,7 +444,7 @@ pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result
     };
 
     sqlx::query(
-        "UPDATE tickets SET title = $2, description = $3, story_points = $4, status_id = $5, assignee_id = $6, start_date = $7, end_date = $8, due_date = $9, parent_ticket_id = $10, milestone_id = $11, updated_at = NOW() WHERE id = $1"
+        "UPDATE tickets SET title = $2, description = $3, story_points = $4, status_id = $5, assignee_id = $6, start_date = $7, end_date = $8, due_date = $9, parent_ticket_id = $10, milestone_id = $11, updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond') WHERE id = $1"
     )
         .bind(id)
         .bind(&title)
@@ -393,7 +457,7 @@ pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result
         .bind(due_date)
         .bind(parent_ticket_id)
         .bind(milestone_id)
-        .execute(db)
+        .execute(&mut *db)
         .await
         .map_err(AppError::Database)?;
 
@@ -405,12 +469,13 @@ pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result
 // CASCADE) as deleted, without physically removing the row. This keeps
 // ticket_activity_log/ticket_comments (ON DELETE CASCADE on ticket_id)
 // intact for traceability instead of losing them at the moment of deletion.
-pub async fn delete_ticket(db: &PgPool, id: i64) -> Result<()> {
+pub async fn delete_ticket(db: &mut PgConnection, id: i64) -> Result<()> {
     sqlx::query(
         "WITH RECURSIVE descendants AS (
-            SELECT id FROM tickets WHERE id = $1
-            UNION ALL
-            SELECT t.id FROM tickets t JOIN descendants d ON t.parent_ticket_id = d.id
+            SELECT id, project_id FROM tickets WHERE id = $1
+            UNION
+            SELECT t.id, t.project_id FROM tickets t
+            JOIN descendants d ON t.parent_ticket_id = d.id AND t.project_id = d.project_id
         )
         UPDATE tickets SET deleted_at = NOW() WHERE id IN (SELECT id FROM descendants)",
     )
@@ -421,18 +486,19 @@ pub async fn delete_ticket(db: &PgPool, id: i64) -> Result<()> {
     Ok(())
 }
 
-pub async fn would_create_cycle(db: &PgPool, ticket_id: i64, new_parent_id: i64) -> Result<bool> {
+pub async fn would_create_cycle(db: &mut PgConnection, project_id: i64, ticket_id: i64, new_parent_id: i64) -> Result<bool> {
     let result = sqlx::query_as::<_, (bool,)>(
         "WITH RECURSIVE ancestors AS (
-            SELECT id, parent_ticket_id FROM tickets WHERE id = $1
-            UNION ALL
+            SELECT id, parent_ticket_id FROM tickets WHERE id = $1 AND project_id = $3
+            UNION
             SELECT t.id, t.parent_ticket_id FROM tickets t
-            JOIN ancestors a ON t.id = a.parent_ticket_id
+            JOIN ancestors a ON t.id = a.parent_ticket_id WHERE t.project_id = $3
         )
         SELECT EXISTS (SELECT 1 FROM ancestors WHERE id = $2)"
     )
     .bind(new_parent_id)
     .bind(ticket_id)
+    .bind(project_id)
     .fetch_one(db)
     .await
     .map_err(AppError::Database)?;

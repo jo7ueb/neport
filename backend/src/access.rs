@@ -1,4 +1,4 @@
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use crate::auth::{User, UserRole};
 use crate::error::{AppError, Result};
@@ -14,6 +14,11 @@ pub enum Access {
     Manage,
 }
 
+pub async fn check_project_access(db: &PgPool, user: &User, project_id: i64, required: Access) -> Result<()> {
+    let mut conn = db.acquire().await?;
+    check_project_access_on(&mut conn, user, project_id, required).await
+}
+
 // Central authorization check for everything under a project. Site admins
 // always pass. A project with no project_members rows at all is "legacy" -
 // this app had zero access control before this feature existed, so an
@@ -22,12 +27,17 @@ pub enum Access {
 // an explicit manager (or site admin) even on a legacy project, so there's
 // always a way to bootstrap membership without every user being able to
 // touch project settings.
-pub async fn check_project_access(db: &PgPool, user: &User, project_id: i64, required: Access) -> Result<()> {
+pub async fn check_project_access_on(
+    conn: &mut PgConnection,
+    user: &User,
+    project_id: i64,
+    required: Access,
+) -> Result<()> {
     // Archived projects are read-only for everyone, including site admins -
     // the only way to write to one again is to unarchive it first (see
     // projects::handlers::unarchive_project, which bypasses this check
     // entirely since it doesn't operate "on" the project's own content).
-    if required != Access::Read && crate::projects::repo::is_archived(db, project_id).await? {
+    if required != Access::Read && crate::projects::repo::is_archived(&mut *conn, project_id).await? {
         return Err(AppError::Forbidden);
     }
 
@@ -35,7 +45,7 @@ pub async fn check_project_access(db: &PgPool, user: &User, project_id: i64, req
         return Ok(());
     }
 
-    let has_members = members_repo::has_any_members(db, project_id).await?;
+    let has_members = members_repo::has_any_members(&mut *conn, project_id).await?;
     if !has_members {
         return match required {
             Access::Read | Access::Write => Ok(()),
@@ -43,7 +53,7 @@ pub async fn check_project_access(db: &PgPool, user: &User, project_id: i64, req
         };
     }
 
-    let role = members_repo::get_role(db, project_id, user.id).await?;
+    let role = members_repo::get_role(&mut *conn, project_id, user.id).await?;
     let allowed = match (role, required) {
         (Some(_), Access::Read) => true,
         (Some(ProjectRole::Manager) | Some(ProjectRole::Member), Access::Write) => true,

@@ -173,3 +173,34 @@ async fn dependency_can_be_deleted_using_the_dependency_id_from_the_list_endpoin
         .unwrap();
     assert_eq!(resp.status(), 204);
 }
+
+#[tokio::test]
+async fn dependencies_are_scoped_to_the_project_and_path_ticket() {
+    let user = TestUser::create().await;
+    let project = as_i64(&user.create_project(&unique("dependency-boundary")).await, "id");
+    let other = as_i64(&user.create_project(&unique("dependency-other")).await, "id");
+    let a = as_i64(&user.create_ticket(project, None, "A").await, "id");
+    let b = as_i64(&user.create_ticket(project, None, "B").await, "id");
+    let unrelated = as_i64(&user.create_ticket(project, None, "Unrelated").await, "id");
+    let external = as_i64(&user.create_ticket(other, None, "External").await, "id");
+    let tickets_url = format!("{}/api/v1/tickets", base_url());
+
+    for direction in ["successor", "predecessor"] {
+        let response = user.client.post(format!("{tickets_url}/{a}/dependencies"))
+            .json(&json!({ "direction": direction, "other_ticket_id": external }))
+            .send().await.unwrap();
+        assert_eq!(response.status(), 404);
+    }
+
+    let response = user.client.post(format!("{tickets_url}/{a}/dependencies"))
+        .json(&json!({ "direction": "successor", "other_ticket_id": b }))
+        .send().await.unwrap();
+    assert_eq!(response.status(), 201);
+    let dependency = as_i64(&response.json().await.unwrap(), "id");
+    let response = user.client.delete(format!("{tickets_url}/{unrelated}/dependencies/{dependency}"))
+        .send().await.unwrap();
+    assert_eq!(response.status(), 404);
+    let response = user.client.delete(format!("{tickets_url}/{b}/dependencies/{dependency}"))
+        .send().await.unwrap();
+    assert_eq!(response.status(), 204);
+}

@@ -214,7 +214,7 @@ export function WbsGanttPanel({
   const containerRef = useRef<HTMLDivElement>(null)
   const ganttRef = useRef<Gantt | null>(null)
   const [chartError, setChartError] = useState<string | null>(null)
-  const [editingCell, setEditingCell] = useState<{ ticketId: number; field: EditableField } | null>(null)
+  const [editingCell, setEditingCell] = useState<{ ticketId: number; field: EditableField; updatedAt: string } | null>(null)
   const [draftValue, setDraftValue] = useState('')
   const [sort, setSort] = useState<WbsSort>('manual')
   // undefined = modal closed, null = creating a root task, number = creating a child of that ticket
@@ -228,12 +228,19 @@ export function WbsGanttPanel({
 
   const updateMutation = useMutation({
     mutationFn: ({ id, input }: { id: number; input: UpdateTicketInput }) => updateTicket(id, input),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setChartError(null)
+      invalidate()
+    },
+    onError: (err) => {
+      setChartError(getErrorMessage(err, t, 'gantt.updateFailed'))
+      invalidate()
+    },
   })
 
   const dateMutation = useMutation({
-    mutationFn: ({ ticketId, start, end }: { ticketId: number; start: string; end: string }) =>
-      updateTicket(ticketId, { start_date: start, due_date: end }),
+    mutationFn: ({ ticketId, start, end, updatedAt }: { ticketId: number; start: string; end: string; updatedAt: string }) =>
+      updateTicket(ticketId, { start_date: start, due_date: end, expected_updated_at: updatedAt }),
     onSuccess: () => {
       setChartError(null)
       invalidate()
@@ -248,8 +255,17 @@ export function WbsGanttPanel({
   // The Gantt instance (and the callbacks it was constructed with) is only
   // created once - route date-change events through a ref so they always
   // reach the latest mutation rather than the one from the first render.
-  const dateMutateRef = useRef(dateMutation.mutate)
-  dateMutateRef.current = dateMutation.mutate
+  const dateMutateRef = useRef<(ticketId: number, start: Date, end: Date) => void>(() => {})
+  dateMutateRef.current = (ticketId, start, end) => {
+    const ticket = rowsById.get(ticketId)?.ticket
+    if (!ticket) return
+    dateMutation.mutate({
+      ticketId,
+      updatedAt: ticket.updated_at,
+      start: formatLocalDate(start),
+      end: formatLocalDate(end),
+    })
+  }
 
   function startEdit(ticket: Ticket, field: EditableField) {
     if (field === 'story_points' && ticket.child_ticket_count > 0) return
@@ -262,13 +278,13 @@ export function WbsGanttPanel({
     } else {
       setDraftValue(ticket.title)
     }
-    setEditingCell({ ticketId: ticket.id, field })
+    setEditingCell({ ticketId: ticket.id, field, updatedAt: ticket.updated_at })
   }
 
   function commitEdit() {
     if (!editingCell) return
-    const { ticketId, field } = editingCell
-    const input: UpdateTicketInput = {}
+    const { ticketId, field, updatedAt } = editingCell
+    const input: UpdateTicketInput = { expected_updated_at: updatedAt }
     if (field === 'assignee_id') {
       input.assignee_id = draftValue === '' ? null : Number(draftValue)
     } else if (field === 'story_points') {
@@ -298,14 +314,14 @@ export function WbsGanttPanel({
 
   function indent(row: FlatRow) {
     if (row.prevSiblingId === null) return
-    updateMutation.mutate({ id: row.ticket.id, input: { parent_ticket_id: row.prevSiblingId } })
+    updateMutation.mutate({ id: row.ticket.id, input: { parent_ticket_id: row.prevSiblingId, expected_updated_at: row.ticket.updated_at } })
   }
 
   function outdent(row: FlatRow) {
     if (row.ticket.parent_ticket_id === null) return
     const parentRow = rowsById.get(row.ticket.parent_ticket_id)
     const newParentId = parentRow ? parentRow.ticket.parent_ticket_id : null
-    updateMutation.mutate({ id: row.ticket.id, input: { parent_ticket_id: newParentId } })
+    updateMutation.mutate({ id: row.ticket.id, input: { parent_ticket_id: newParentId, expected_updated_at: row.ticket.updated_at } })
   }
 
   function progressLabel(ticket: Ticket): string {
@@ -333,11 +349,7 @@ export function WbsGanttPanel({
         header_height: HEADER_HEIGHT,
         on_click: (task) => navigate(`/tickets/${task.id}`),
         on_date_change: (task, start, end) => {
-          dateMutateRef.current({
-            ticketId: Number(task.id),
-            start: formatLocalDate(start),
-            end: formatLocalDate(end),
-          })
+          dateMutateRef.current(Number(task.id), start, end)
         },
         custom_popup_html: (task) => {
           const start = formatShortDate(task._start!)

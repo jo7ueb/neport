@@ -146,14 +146,15 @@ export function KanbanPage() {
   }, [])
 
   const moveMutation = useMutation({
-    mutationFn: ({ ticketId, statusId }: { ticketId: number; statusId: number }) =>
-      updateTicket(ticketId, { status_id: statusId }),
+    mutationFn: ({ ticket, statusId }: { ticket: Ticket; statusId: number }) =>
+      updateTicket(ticket.id, { status_id: statusId, expected_updated_at: ticket.updated_at }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickets', pid] })
       setError(null)
     },
     onError: (err) => {
       setError(getErrorMessage(err, t, 'kanban.moveFailed'))
+      queryClient.invalidateQueries({ queryKey: ['tickets', pid] })
     },
   })
 
@@ -168,14 +169,14 @@ export function KanbanPage() {
     if (!over || project?.archived_at) return
     const ticketId = Number(active.id)
     const statusId = Number(over.id)
-    const fromTicket = tickets?.find((tkt) => tkt.id === ticketId)
+    const fromTicket = draggingTicket?.id === ticketId ? draggingTicket : tickets?.find((tkt) => tkt.id === ticketId)
     const toStatus = statuses.find((s) => s.id === statusId)
     if (fromTicket && toStatus && !isReachable(workflow, fromTicket.status.id, toStatus, canManage)) {
       setError(t('kanban.invalidTransition'))
       return
     }
-    if (fromTicket && fromTicket.status.id === statusId) return
-    moveMutation.mutate({ ticketId, statusId })
+    if (!fromTicket || fromTicket.status.id === statusId) return
+    moveMutation.mutate({ ticket: fromTicket, statusId })
   }
 
   const statuses = [...(workflow?.statuses ?? [])].sort((a, b) => a.position - b.position)

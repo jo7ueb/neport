@@ -1,0 +1,10 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY neport_mcp/ neport_mcp/
+RUN python -m pip install --no-cache-dir '.[dev]' \
+    && python -m compileall -q neport_mcp
+
+COPY tests/ tests/
+CMD ["python", "-m", "pytest", "-q", "tests"]

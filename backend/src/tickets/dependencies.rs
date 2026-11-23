@@ -4,7 +4,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 use std::sync::Arc;
 
 use crate::{auth::extractors::AuthUser, error::{AppError, Result}, state::AppState};
@@ -82,6 +82,7 @@ fn row_to_dependent_ticket(row: DependentTicketRow) -> DependentTicket {
 pub mod handlers {
     use super::*;
     use crate::access::{self, Access};
+    use crate::tickets::repo;
 
     pub async fn list_dependencies(
         State(state): State<Arc<AppState>>,
@@ -90,7 +91,7 @@ pub mod handlers {
     ) -> Result<Json<TicketDependencies>> {
         let project_id = access::project_id_for_ticket(&state.db, ticket_id).await?;
         access::check_project_access(&state.db, &user, project_id, Access::Read).await?;
-        let deps = super::list_dependencies_for_ticket(&state.db, ticket_id).await?;
+        let deps = super::list_dependencies_for_ticket(&state.db, ticket_id, project_id).await?;
         Ok(Json(deps))
     }
 
@@ -108,7 +109,9 @@ pub mod handlers {
         Json(payload): Json<CreateDependencyRequest>,
     ) -> Result<(StatusCode, Json<TicketDependency>)> {
         let project_id = access::project_id_for_ticket(&state.db, ticket_id).await?;
-        access::check_project_access(&state.db, &user, project_id, Access::Write).await?;
+        let mut tx = state.db.begin().await?;
+        repo::lock_project(&mut tx, project_id).await?;
+        access::check_project_access_on(&mut tx, &user, project_id, Access::Write).await?;
         let (predecessor_id, successor_id) = match payload.direction.as_str() {
             "predecessor" => (payload.other_ticket_id, ticket_id),
             "successor" => (ticket_id, payload.other_ticket_id),
@@ -125,14 +128,16 @@ pub mod handlers {
             ));
         }
 
-        if super::would_create_dependency_cycle(&state.db, predecessor_id, successor_id).await? {
+        super::validate_endpoints(&mut tx, project_id, predecessor_id, successor_id).await?;
+        if super::would_create_dependency_cycle(&mut tx, project_id, predecessor_id, successor_id).await? {
             return Err(AppError::BadRequest(
                 "this dependency would create a cycle".into(),
             ));
         }
 
-        let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
-        let dep = super::create_dependency(&state.db, predecessor_id, successor_id, user.id, access_log_id).await?;
+        let access_log_id = crate::audit::access_log::record(&mut *tx, user.id, ip.as_deref()).await?;
+        let dep = super::create_dependency(&mut tx, predecessor_id, successor_id, user.id, access_log_id).await?;
+        tx.commit().await?;
         Ok((StatusCode::CREATED, Json(dep)))
     }
 
@@ -143,9 +148,12 @@ pub mod handlers {
         Path((ticket_id, dependency_id)): Path<(i64, i64)>,
     ) -> Result<StatusCode> {
         let project_id = access::project_id_for_ticket(&state.db, ticket_id).await?;
-        access::check_project_access(&state.db, &user, project_id, Access::Write).await?;
-        let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
-        super::delete_dependency(&state.db, dependency_id, Some(user.id), access_log_id).await?;
+        let mut tx = state.db.begin().await?;
+        repo::lock_project(&mut tx, project_id).await?;
+        access::check_project_access_on(&mut tx, &user, project_id, Access::Write).await?;
+        let access_log_id = crate::audit::access_log::record(&mut *tx, user.id, ip.as_deref()).await?;
+        super::delete_dependency(&mut tx, project_id, ticket_id, dependency_id, user.id, access_log_id).await?;
+        tx.commit().await?;
         Ok(StatusCode::NO_CONTENT)
     }
 }
@@ -153,15 +161,17 @@ pub mod handlers {
 pub async fn list_dependencies_for_ticket(
     db: &PgPool,
     ticket_id: i64,
+    project_id: i64,
 ) -> Result<TicketDependencies> {
     let predecessors_sql = format!(
         "SELECT td.id AS dependency_id, td.created_at AS dependency_created_at, td.created_by_id AS dependency_created_by_id, td.deleted_at AS dependency_deleted_at, td.deleted_by_id AS dependency_deleted_by_id, {TICKET_SELECT_COLUMNS}
          {TICKET_FROM_JOIN}
          JOIN ticket_dependencies td ON t.id = td.predecessor_ticket_id
-         WHERE td.successor_ticket_id = $1"
+         WHERE td.successor_ticket_id = $1 AND t.project_id = $2"
     );
     let predecessors = sqlx::query_as::<_, DependentTicketRow>(&predecessors_sql)
         .bind(ticket_id)
+        .bind(project_id)
         .fetch_all(db)
         .await
         .map_err(AppError::Database)?
@@ -173,10 +183,11 @@ pub async fn list_dependencies_for_ticket(
         "SELECT td.id AS dependency_id, td.created_at AS dependency_created_at, td.created_by_id AS dependency_created_by_id, td.deleted_at AS dependency_deleted_at, td.deleted_by_id AS dependency_deleted_by_id, {TICKET_SELECT_COLUMNS}
          {TICKET_FROM_JOIN}
          JOIN ticket_dependencies td ON t.id = td.successor_ticket_id
-         WHERE td.predecessor_ticket_id = $1"
+         WHERE td.predecessor_ticket_id = $1 AND t.project_id = $2"
     );
     let successors = sqlx::query_as::<_, DependentTicketRow>(&successors_sql)
         .bind(ticket_id)
+        .bind(project_id)
         .fetch_all(db)
         .await
         .map_err(AppError::Database)?
@@ -190,15 +201,36 @@ pub async fn list_dependencies_for_ticket(
     })
 }
 
-pub async fn create_dependency(
-    db: &PgPool,
+async fn validate_endpoints(
+    db: &mut PgConnection,
+    project_id: i64,
+    predecessor_id: i64,
+    successor_id: i64,
+) -> Result<()> {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM tickets
+         WHERE id IN ($1, $2) AND project_id = $3 AND deleted_at IS NULL",
+    )
+    .bind(predecessor_id)
+    .bind(successor_id)
+    .bind(project_id)
+    .fetch_one(db)
+    .await?;
+    if count != 2 {
+        return Err(AppError::NotFound);
+    }
+    Ok(())
+}
+
+async fn create_dependency(
+    db: &mut PgConnection,
     predecessor_id: i64,
     successor_id: i64,
     created_by_id: i64,
     access_log_id: i64,
 ) -> Result<TicketDependency> {
     sqlx::query_as::<_, (i64, i64, i64, chrono::DateTime<chrono::Utc>, Option<i64>)>(
-        "INSERT INTO ticket_dependencies (predecessor_ticket_id, successor_ticket_id, created_at, created_by_id, created_access_log_id) VALUES ($1, $2, NOW(), $3, $4) RETURNING id, predecessor_ticket_id, successor_ticket_id, created_at, created_by_id"
+        "INSERT INTO ticket_dependencies (predecessor_ticket_id, successor_ticket_id, created_at, created_by_id, created_access_log_id) VALUES ($1, $2, clock_timestamp(), $3, $4) RETURNING id, predecessor_ticket_id, successor_ticket_id, created_at, created_by_id"
     )
     .bind(predecessor_id)
     .bind(successor_id)
@@ -221,35 +253,57 @@ pub async fn create_dependency(
 // Soft delete: the row (and its created_at/created_by_id) is kept around so
 // the ticket timeline can still show the original "added" event even after
 // removal - see the comment on DependentTicket.dependency_deleted_at.
-pub async fn delete_dependency(db: &PgPool, dependency_id: i64, deleted_by_id: Option<i64>, access_log_id: i64) -> Result<()> {
-    sqlx::query("UPDATE ticket_dependencies SET deleted_at = NOW(), deleted_by_id = $2, deleted_access_log_id = $3 WHERE id = $1")
-        .bind(dependency_id)
-        .bind(deleted_by_id)
-        .bind(access_log_id)
-        .execute(db)
-        .await
-        .map_err(AppError::Database)?;
+async fn delete_dependency(
+    db: &mut PgConnection,
+    project_id: i64,
+    ticket_id: i64,
+    dependency_id: i64,
+    deleted_by_id: i64,
+    access_log_id: i64,
+) -> Result<()> {
+    let result = sqlx::query(
+        "UPDATE ticket_dependencies d
+         SET deleted_at = clock_timestamp(), deleted_by_id = $4, deleted_access_log_id = $5
+         FROM tickets predecessor, tickets successor
+         WHERE d.id = $1 AND $2 IN (d.predecessor_ticket_id, d.successor_ticket_id)
+           AND d.deleted_at IS NULL
+           AND predecessor.id = d.predecessor_ticket_id AND predecessor.project_id = $3
+           AND successor.id = d.successor_ticket_id AND successor.project_id = $3
+           AND predecessor.deleted_at IS NULL AND successor.deleted_at IS NULL",
+    )
+    .bind(dependency_id)
+    .bind(ticket_id)
+    .bind(project_id)
+    .bind(deleted_by_id)
+    .bind(access_log_id)
+    .execute(db)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
     Ok(())
 }
 
-pub async fn would_create_dependency_cycle(
-    db: &PgPool,
+async fn would_create_dependency_cycle(
+    db: &mut PgConnection,
+    project_id: i64,
     predecessor_id: i64,
     successor_id: i64,
 ) -> Result<bool> {
     let result = sqlx::query_as::<_, (bool,)>(
         "WITH RECURSIVE reachable AS (
-            SELECT successor_ticket_id AS ticket_id FROM ticket_dependencies
-            WHERE predecessor_ticket_id = $1 AND deleted_at IS NULL
+            SELECT $1::bigint AS ticket_id
             UNION
             SELECT d.successor_ticket_id FROM ticket_dependencies d
             JOIN reachable r ON d.predecessor_ticket_id = r.ticket_id
-            WHERE d.deleted_at IS NULL
+            JOIN tickets t ON t.id = d.successor_ticket_id
+            WHERE d.deleted_at IS NULL AND t.project_id = $3 AND t.deleted_at IS NULL
         )
         SELECT EXISTS (SELECT 1 FROM reachable WHERE ticket_id = $2)"
     )
     .bind(successor_id)
     .bind(predecessor_id)
+    .bind(project_id)
     .fetch_one(db)
     .await
     .map_err(AppError::Database)?;

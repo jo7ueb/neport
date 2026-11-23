@@ -26,8 +26,8 @@ fn row_to_notification(row: NotificationRow) -> Notification {
     Notification { id, notif_type, actor_id, actor_name, ticket_id, ticket_title, report_date, read_at, created_at }
 }
 
-async fn create(
-    db: &PgPool,
+async fn create<'e>(
+    db: impl sqlx::PgExecutor<'e>,
     user_id: i64,
     notif_type: NotificationType,
     actor_id: Option<i64>,
@@ -48,7 +48,7 @@ async fn create(
     Ok(())
 }
 
-pub async fn notify_ticket_assigned(db: &PgPool, assignee_id: i64, actor_id: i64, ticket_id: i64) -> Result<()> {
+pub async fn notify_ticket_assigned<'e>(db: impl sqlx::PgExecutor<'e>, assignee_id: i64, actor_id: i64, ticket_id: i64) -> Result<()> {
     if assignee_id == actor_id {
         return Ok(());
     }
@@ -67,7 +67,7 @@ pub async fn notify_report_decision(db: &PgPool, user_id: i64, approver_id: i64,
     create(db, user_id, notif_type, Some(approver_id), None, Some(date)).await
 }
 
-pub async fn notify_mentioned_in_ticket(db: &PgPool, recipient_id: i64, actor_id: i64, ticket_id: i64) -> Result<()> {
+pub async fn notify_mentioned_in_ticket<'e>(db: impl sqlx::PgExecutor<'e>, recipient_id: i64, actor_id: i64, ticket_id: i64) -> Result<()> {
     if recipient_id == actor_id {
         return Ok(());
     }
@@ -86,16 +86,16 @@ pub async fn notify_mentioned_in_report(db: &PgPool, recipient_id: i64, actor_id
 // no explicit manager (legacy, or simply nobody assigned yet) falls back to
 // site admins, mirroring access::Access::Manage's own fallback so "who gets
 // notified" always matches "who is actually allowed to confirm".
-pub async fn notify_confirmation_requested(db: &PgPool, project_id: i64, actor_id: i64, ticket_id: i64) -> Result<()> {
-    let mut recipients = crate::project_members::repo::list_manager_user_ids(db, project_id).await?;
+pub async fn notify_confirmation_requested(db: &mut sqlx::PgConnection, project_id: i64, actor_id: i64, ticket_id: i64) -> Result<()> {
+    let mut recipients = crate::project_members::repo::list_manager_user_ids(&mut *db, project_id).await?;
     if recipients.is_empty() {
-        recipients = crate::users::repo::list_admin_ids(db).await?;
+        recipients = crate::users::repo::list_admin_ids(&mut *db).await?;
     }
     for recipient_id in recipients {
         if recipient_id == actor_id {
             continue;
         }
-        create(db, recipient_id, NotificationType::TicketConfirmationRequested, Some(actor_id), Some(ticket_id), None).await?;
+        create(&mut *db, recipient_id, NotificationType::TicketConfirmationRequested, Some(actor_id), Some(ticket_id), None).await?;
     }
     Ok(())
 }
