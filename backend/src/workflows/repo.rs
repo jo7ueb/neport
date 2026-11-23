@@ -308,7 +308,7 @@ pub async fn get_default_workflow_id(db: &PgPool) -> Result<i64> {
     Ok(id)
 }
 
-pub async fn get_status_category(db: &PgPool, status_id: i64) -> Result<StatusCategory> {
+pub async fn get_status_category<'e>(db: impl sqlx::PgExecutor<'e>, status_id: i64) -> Result<StatusCategory> {
     let (category_str,): (String,) = sqlx::query_as("SELECT category FROM workflow_statuses WHERE id = $1")
         .bind(status_id)
         .fetch_one(db)
@@ -317,7 +317,7 @@ pub async fn get_status_category(db: &PgPool, status_id: i64) -> Result<StatusCa
     category_str.parse().map_err(AppError::BadRequest)
 }
 
-pub async fn is_transition_allowed(db: &PgPool, workflow_id: i64, from_status_id: i64, to_status_id: i64) -> Result<bool> {
+pub async fn is_transition_allowed<'e>(db: impl sqlx::PgExecutor<'e>, workflow_id: i64, from_status_id: i64, to_status_id: i64) -> Result<bool> {
     let (exists,): (bool,) = sqlx::query_as(
         "SELECT EXISTS (SELECT 1 FROM workflow_transitions WHERE workflow_id = $1 AND from_status_id = $2 AND to_status_id = $3)"
     )
@@ -333,7 +333,7 @@ pub async fn is_transition_allowed(db: &PgPool, workflow_id: i64, from_status_id
 // Used when creating a ticket: prefers the status explicitly marked as
 // initial, falling back to whichever status sorts first by position so a
 // workflow is always usable even if an admin hasn't set one yet.
-pub async fn get_initial_status_id(db: &PgPool, workflow_id: i64) -> Result<i64> {
+pub async fn get_initial_status_id<'e>(db: impl sqlx::PgExecutor<'e>, workflow_id: i64) -> Result<i64> {
     let row: Option<(i64,)> = sqlx::query_as(
         "SELECT id FROM workflow_statuses WHERE workflow_id = $1 ORDER BY is_initial DESC, position ASC LIMIT 1"
     )

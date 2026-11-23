@@ -49,7 +49,7 @@ pub async fn create_user(
     })
 }
 
-pub async fn list_admin_ids(db: &sqlx::PgPool) -> Result<Vec<i64>> {
+pub async fn list_admin_ids<'e>(db: impl sqlx::PgExecutor<'e>) -> Result<Vec<i64>> {
     let rows: Vec<(i64,)> = sqlx::query_as("SELECT id FROM users WHERE role = 'admin' AND status = 'active'")
         .fetch_all(db)
         .await?;

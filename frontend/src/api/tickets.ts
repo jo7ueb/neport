@@ -39,8 +39,8 @@ export function getTicket(id: number): Promise<Ticket> {
   return request<Ticket>(`/tickets/${id}`)
 }
 
-export function searchTickets(q: string): Promise<Ticket[]> {
-  return request<Ticket[]>('/tickets/search', { query: { q } })
+export function searchTickets(q: string, projectId?: number): Promise<Ticket[]> {
+  return request<Ticket[]>('/tickets/search', { query: { q, project_id: projectId } })
 }
 
 export function listTicketChildren(id: number): Promise<Ticket[]> {
@@ -69,6 +69,7 @@ export function createTicket(input: CreateTicketInput): Promise<Ticket> {
 }
 
 export interface UpdateTicketInput {
+  expected_updated_at?: string
   title?: string
   description?: string | null
   story_points?: number | null

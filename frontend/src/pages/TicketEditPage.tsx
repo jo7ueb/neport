@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -19,14 +19,31 @@ export function TicketEditPage() {
   const { t } = useTranslation()
   const { ticketId } = useParams()
   const tid = Number(ticketId)
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
 
-  const { data: ticket, isLoading, isError } = useQuery({
+  const { data: ticket, isFetchedAfterMount, isError } = useQuery({
     queryKey: ['ticket', tid],
     queryFn: () => getTicket(tid),
+    refetchOnMount: 'always',
     retry: false,
   })
+
+  if (isError && !ticket) {
+    return <p className="text-sm text-red-600">{t('ticket.detail.notFound', { id: tid })}</p>
+  }
+  if (!isFetchedAfterMount || !ticket) {
+    return <p className="text-gray-500">{t('common.loading')}</p>
+  }
+
+  return <TicketEditForm key={tid} initialTicket={ticket} />
+}
+
+function TicketEditForm({ initialTicket }: { initialTicket: Ticket }) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  // Keep the fields and their revision tied to the same snapshot while editing.
+  const [ticket] = useState(initialTicket)
+  const tid = ticket.id
 
   const users = useAssignableUsers(ticket?.project_id)
   const { canManage } = useProjectRole(ticket?.project_id)
@@ -46,51 +63,31 @@ export function TicketEditPage() {
     enabled: !!ticket?.parent_ticket_id,
   })
 
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [storyPoints, setStoryPoints] = useState<number | ''>('')
-  const [statusId, setStatusId] = useState<number | ''>('')
-  const [assigneeId, setAssigneeId] = useState<number | ''>('')
-  const [dueDate, setDueDate] = useState('')
-  const [parentTicket, setParentTicket] = useState<Ticket | null>(null)
-  const [milestoneId, setMilestoneId] = useState<number | ''>('')
+  const [title, setTitle] = useState(ticket.title)
+  const [description, setDescription] = useState(ticket.description ?? '')
+  const [storyPoints, setStoryPoints] = useState<number | ''>(ticket.story_points ?? '')
+  const [statusId, setStatusId] = useState<number | ''>(ticket.status.id)
+  const [assigneeId, setAssigneeId] = useState<number | ''>(ticket.assignee_id ?? '')
+  const [dueDate, setDueDate] = useState(ticket.due_date ?? '')
+  const [parentSelection, setParentSelection] = useState<Ticket | null>()
+  const [milestoneId, setMilestoneId] = useState<number | ''>(ticket.milestone_id ?? '')
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (ticket) {
-      setTitle(ticket.title)
-      setDescription(ticket.description ?? '')
-      setStoryPoints(ticket.child_ticket_count > 0 ? '' : ticket.story_points ?? '')
-      setStatusId(ticket.status.id)
-      setAssigneeId(ticket.assignee_id ?? '')
-      setDueDate(ticket.due_date ?? '')
-      setMilestoneId(ticket.milestone_id ?? '')
-      if (!ticket.parent_ticket_id) {
-        setParentTicket(null)
-      }
-    }
-  }, [ticket])
-
-  // The parent ticket's own title/id only become available once this
-  // separate lookup resolves, so it's synced independently from the rest of
-  // the form fields above.
-  useEffect(() => {
-    if (ticket && currentParentTicket && currentParentTicket.id === ticket.parent_ticket_id) {
-      setParentTicket(currentParentTicket)
-    }
-  }, [ticket, currentParentTicket])
+  const currentParent = currentParentTicket?.project_id === ticket.project_id ? currentParentTicket : null
+  const parentTicket = parentSelection === undefined ? currentParent : parentSelection
 
   const updateMutation = useMutation({
     mutationFn: () =>
       updateTicket(tid, {
+        expected_updated_at: ticket.updated_at,
         title,
         description: description || null,
-        story_points: storyPoints === '' ? null : storyPoints,
+        story_points: ticket.child_ticket_count > 0 ? undefined : storyPoints === '' ? null : storyPoints,
         status_id: statusId === '' ? undefined : statusId,
         assignee_id: assigneeId === '' ? null : assigneeId,
         due_date: dueDate || null,
-        parent_ticket_id: parentTicket ? parentTicket.id : null,
-        milestone_id: milestoneId === '' ? null : milestoneId,
+        parent_ticket_id: parentSelection === undefined ? undefined : parentSelection?.id ?? null,
+        milestone_id: milestoneId === (ticket.milestone_id ?? '') ? undefined : milestoneId === '' ? null : milestoneId,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ticket', tid] })
@@ -106,13 +103,6 @@ export function TicketEditPage() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     updateMutation.mutate()
-  }
-
-  if (isError) {
-    return <p className="text-sm text-red-600">{t('ticket.detail.notFound', { id: tid })}</p>
-  }
-  if (isLoading || !ticket) {
-    return <p className="text-gray-500">{t('common.loading')}</p>
   }
 
   // Only offer the current status plus whatever the workflow's transitions
@@ -235,7 +225,7 @@ export function TicketEditPage() {
 
           <label className="text-sm">
             <span className="mb-1 block text-gray-600">{t('ticket.detail.parentTicketLabel')}</span>
-            <TicketPicker value={parentTicket} onChange={setParentTicket} excludeId={tid} />
+            <TicketPicker projectId={ticket.project_id} value={parentTicket} onChange={setParentSelection} excludeId={tid} />
           </label>
 
           <label className="text-sm">

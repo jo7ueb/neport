@@ -41,9 +41,9 @@ fn row_to_activity(row: ActivityRow) -> TicketActivity {
 }
 
 // For activity types that don't carry any before/after data (created, comment).
-pub async fn record(db: &PgPool, ticket_id: i64, user_id: i64, activity_type: ActivityType, access_log_id: i64) -> Result<()> {
+pub async fn record<'e>(db: impl sqlx::PgExecutor<'e>, ticket_id: i64, user_id: i64, activity_type: ActivityType, access_log_id: i64) -> Result<()> {
     sqlx::query(
-        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, access_log_id) VALUES ($1, $2, $3, NOW(), $4)",
+        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, access_log_id) VALUES ($1, $2, $3, clock_timestamp(), $4)",
     )
     .bind(ticket_id)
     .bind(user_id)
@@ -56,8 +56,8 @@ pub async fn record(db: &PgPool, ticket_id: i64, user_id: i64, activity_type: Ac
     Ok(())
 }
 
-pub async fn record_status_change(
-    db: &PgPool,
+pub async fn record_status_change<'e>(
+    db: impl sqlx::PgExecutor<'e>,
     ticket_id: i64,
     user_id: i64,
     from_status_id: i64,
@@ -65,7 +65,7 @@ pub async fn record_status_change(
     access_log_id: i64,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, from_status_id, to_status_id, access_log_id) VALUES ($1, $2, 'status_change', NOW(), $3, $4, $5)",
+        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, from_status_id, to_status_id, access_log_id) VALUES ($1, $2, 'status_change', clock_timestamp(), $3, $4, $5)",
     )
     .bind(ticket_id)
     .bind(user_id)
@@ -79,8 +79,8 @@ pub async fn record_status_change(
     Ok(())
 }
 
-pub async fn record_assignee_change(
-    db: &PgPool,
+pub async fn record_assignee_change<'e>(
+    db: impl sqlx::PgExecutor<'e>,
     ticket_id: i64,
     user_id: i64,
     from_assignee_id: Option<i64>,
@@ -88,7 +88,7 @@ pub async fn record_assignee_change(
     access_log_id: i64,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, from_assignee_id, to_assignee_id, access_log_id) VALUES ($1, $2, 'assignee_change', NOW(), $3, $4, $5)",
+        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, from_assignee_id, to_assignee_id, access_log_id) VALUES ($1, $2, 'assignee_change', clock_timestamp(), $3, $4, $5)",
     )
     .bind(ticket_id)
     .bind(user_id)
@@ -102,8 +102,8 @@ pub async fn record_assignee_change(
     Ok(())
 }
 
-pub async fn record_field_change(
-    db: &PgPool,
+pub async fn record_field_change<'e>(
+    db: impl sqlx::PgExecutor<'e>,
     ticket_id: i64,
     user_id: i64,
     field_name: &str,
@@ -112,7 +112,7 @@ pub async fn record_field_change(
     access_log_id: i64,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, field_name, from_text, to_text, access_log_id) VALUES ($1, $2, 'field_update', NOW(), $3, $4, $5, $6)",
+        "INSERT INTO ticket_activity_log (ticket_id, user_id, activity_type, occurred_at, field_name, from_text, to_text, access_log_id) VALUES ($1, $2, 'field_update', clock_timestamp(), $3, $4, $5, $6)",
     )
     .bind(ticket_id)
     .bind(user_id)

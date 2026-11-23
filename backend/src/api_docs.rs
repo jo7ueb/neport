@@ -238,12 +238,17 @@ pub struct TicketCreateRequest {
     pub description: Option<String>,
     /// Optional assignee.
     pub assignee_id: Option<i64>,
-    /// Optional parent ticket.
+    /// Optional active parent ticket in the same project.
     pub parent_ticket_id: Option<i64>,
+    /// Optional active milestone in the same project.
+    pub milestone_id: Option<i64>,
 }
 
 #[derive(ToSchema)]
 pub struct TicketUpdateRequest {
+    /// Ticket's updated_at from the previous read. Omit for an unconditional patch.
+    #[schema(example = "2026-11-23T12:00:00.123456Z")]
+    pub expected_updated_at: Option<chrono::DateTime<chrono::Utc>>,
     /// New title, when changing the title.
     pub title: Option<String>,
     /// New description, when changing the description.
@@ -252,13 +257,20 @@ pub struct TicketUpdateRequest {
     pub status_id: Option<i64>,
     /// New assignee identifier; null clears the assignee.
     pub assignee_id: Option<i64>,
+    /// Active parent ticket in the same project; null clears the parent.
+    pub parent_ticket_id: Option<i64>,
+    /// Active milestone in the same project; null clears the milestone.
+    pub milestone_id: Option<i64>,
 }
 
 #[derive(ToSchema)]
 pub struct DependencyCreateRequest {
-    /// Ticket that must be completed first.
+    /// Whether the other ticket is a predecessor or successor of the path ticket.
+    #[schema(example = "predecessor")]
+    pub direction: String,
+    /// Another active ticket in the same project.
     #[schema(example = 17)]
-    pub depends_on_ticket_id: i64,
+    pub other_ticket_id: i64,
 }
 
 #[derive(ToSchema)]
@@ -923,6 +935,8 @@ fn create_ticket() {}
     tag = "Tickets and comments",
     summary = "Search tickets",
     description = "### When to use\nSearch tickets. Use this endpoint as part of the tickets and comments workflow.\n\n### Errors\nThe common 400, 401, 403, 404, and 503 responses explain how to recover. Check the `error` field before retrying.",
+    params(("q" = Option<String>, Query, description = "Ticket ID or title text"),
+           ("project_id" = Option<i64>, Query, description = "Limit results to this project")),
     responses((status = 200, description = "Successful response. See the response schema and example above."), (status = 400, description = "Invalid input or invalid state. Correct the request using the error message."), (status = 401, description = "Authentication is missing or expired. Log in again."), (status = 403, description = "The caller lacks permission or the CSRF token is missing or invalid."), (status = 404, description = "The resource does not exist or is not visible to the caller."), (status = 503, description = "Maintenance mode is active. Stop mutations and retry later."))
 )]
 fn search_tickets() {}
@@ -945,8 +959,8 @@ fn get_ticket() {}
     tag = "Tickets and comments",
     summary = "Update a ticket",
     request_body = TicketUpdateRequest,
-    description = "### When to use\nPartially update a ticket. Send only fields that changed.\n\nChanging status, assignee, parent, dates, or milestone creates activity-log entries. **400** means the update would create a cycle or violates the workflow. **403** means the caller lacks project edit access.", params(("id" = i64, Path, description = "Resource identifier: id" )),
-    responses((status = 200, description = "Successful response. See the response schema and example above."), (status = 400, description = "Invalid input or invalid state. Correct the request using the error message."), (status = 401, description = "Authentication is missing or expired. Log in again."), (status = 403, description = "The caller lacks permission or the CSRF token is missing or invalid."), (status = 404, description = "The resource does not exist or is not visible to the caller."), (status = 503, description = "Maintenance mode is active. Stop mutations and retry later."))
+    description = "### When to use\nPartially update a ticket. Send only fields that changed. Include the exact updated_at value from the ticket as expected_updated_at to guard against stale edits. On **409**, fetch the latest ticket and reconcile before retrying.\n\nChanging status, assignee, parent, dates, or milestone creates activity-log entries. **400** covers invalid references, cycles, and workflow violations. **403** means the caller lacks project edit access.", params(("id" = i64, Path, description = "Resource identifier: id" )),
+    responses((status = 200, description = "Successful response. See the response schema and example above."), (status = 400, description = "Invalid input or invalid state. Correct the request using the error message."), (status = 401, description = "Authentication is missing or expired. Log in again."), (status = 403, description = "The caller lacks permission or the CSRF token is missing or invalid."), (status = 404, description = "The resource does not exist or is not visible to the caller."), (status = 409, description = "The ticket changed after the supplied version. Fetch the latest ticket before retrying."), (status = 503, description = "Maintenance mode is active. Stop mutations and retry later."))
 )]
 fn update_ticket() {}
 
@@ -990,8 +1004,8 @@ fn list_dependencies() {}
     tag = "Dependencies and planning",
     summary = "Create a ticket dependency",
     request_body = DependencyCreateRequest,
-    description = "### When to use\nDeclare that the current ticket depends on another ticket.\n\n### Request example\n```json\n{\"depends_on_ticket_id\":17}\n```\n\nThe server rejects self-dependencies and graph cycles with **400**. Remove the conflicting edge before retrying.", params(("id" = i64, Path, description = "Resource identifier: id" )),
-    responses((status = 200, description = "Successful response. See the response schema and example above."), (status = 400, description = "Invalid input or invalid state. Correct the request using the error message."), (status = 401, description = "Authentication is missing or expired. Log in again."), (status = 403, description = "The caller lacks permission or the CSRF token is missing or invalid."), (status = 404, description = "The resource does not exist or is not visible to the caller."), (status = 503, description = "Maintenance mode is active. Stop mutations and retry later."))
+    description = "### When to use\nDeclare that the current ticket depends on another active ticket in the same project.\n\n### Request example\n```json\n{\"direction\":\"predecessor\",\"other_ticket_id\":17}\n```\n\nThe server rejects self-dependencies and graph cycles with **400**. Remove the conflicting edge before retrying.", params(("id" = i64, Path, description = "Resource identifier: id" )),
+    responses((status = 201, description = "Successful response. See the response schema and example above."), (status = 400, description = "Invalid input or invalid state. Correct the request using the error message."), (status = 401, description = "Authentication is missing or expired. Log in again."), (status = 403, description = "The caller lacks permission or the CSRF token is missing or invalid."), (status = 404, description = "The resource does not exist or is not visible to the caller."), (status = 503, description = "Maintenance mode is active. Stop mutations and retry later."))
 )]
 fn create_dependency() {}
 
@@ -1001,8 +1015,8 @@ fn create_dependency() {}
     operation_id = "delete_dependency",
     tag = "Dependencies and planning",
     summary = "Delete a ticket dependency",
-    description = "### When to use\nDelete a ticket dependency. Use this endpoint as part of the dependencies and planning workflow.\n\n### Errors\nThe common 400, 401, 403, 404, and 503 responses explain how to recover. Check the `error` field before retrying.", params(("id" = i64, Path, description = "Resource identifier: id" ), ("dependency_id" = i64, Path, description = "Resource identifier: dependency_id" )),
-    responses((status = 204, description = "Successful response. See the response schema and example above."), (status = 400, description = "Invalid input or invalid state. Correct the request using the error message."), (status = 401, description = "Authentication is missing or expired. Log in again."), (status = 403, description = "The caller lacks permission or the CSRF token is missing or invalid."), (status = 404, description = "The resource does not exist or is not visible to the caller."), (status = 503, description = "Maintenance mode is active. Stop mutations and retry later."))
+    description = "### When to use\nRemove an active dependency linked to the ticket in the path. Both tickets must be active members of the same project. The removed entry stays in the ticket timeline.\n\n### Errors\nThe common 400, 401, 403, 404, and 503 responses explain how to recover. Check the `error` field before retrying.", params(("id" = i64, Path, description = "Resource identifier: id" ), ("dependency_id" = i64, Path, description = "Resource identifier: dependency_id" )),
+    responses((status = 204, description = "Successful response. See the response schema and example above."), (status = 400, description = "Invalid input or invalid state. Correct the request using the error message."), (status = 401, description = "Authentication is missing or expired. Log in again."), (status = 403, description = "The caller lacks permission or the CSRF token is missing or invalid."), (status = 404, description = "The active dependency does not belong to the path ticket or is unavailable in its project."), (status = 503, description = "Maintenance mode is active. Stop mutations and retry later."))
 )]
 fn delete_dependency() {}
 

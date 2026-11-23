@@ -20,13 +20,18 @@
 
 Cookieセッションでは変更系リクエストにCSRFトークンを照合する。Bearer認証ではAPIトークンのスコープと利用者の有効性を確認する。サイト権限は admin/general。案件では viewer が閲覧、member が編集、manager が管理可能。サイト管理者には所属の例外があり、アーカイブ済み案件の内容への書込みは禁止。**現行に限りメンバーなし案件は認証済み利用者に閲覧・編集を許す。** 稼働承認は対象者との承認者関係で判定する。[認証extractor](../backend/src/auth/extractors.rs)・[APIトークン](../backend/src/auth/api_tokens.rs)・[案件認可](../backend/src/access.rs)・[承認](../backend/src/approvals/handlers.rs)
 
+## チケットの更新と関連付け
+
+- チケットの作成・更新・削除と依存の追加・削除は、案件行をロックしてから関連先や循環を検証する。チケット更新、アクセス記録、活動履歴、DB通知は同じトランザクションで確定する。[チケット更新](../backend/src/tickets/handlers.rs)・[ロックと階層検証](../backend/src/tickets/repo.rs)・[依存操作](../backend/src/tickets/dependencies.rs)
+- 親・マイルストーンの指定先と依存の両端は有効な同一案件内の要素に限る。依存の削除には、URLのチケットがその依存の端点であることも必要。WBSの子孫・削除、依存一覧・ガント、案件・マイルストーン集計も案件内に絞る。[チケットSQL](../backend/src/tickets/repo.rs)・[依存SQL](../backend/src/tickets/dependencies.rs)・[ガント](../backend/src/gantt/repo.rs)・[集計](../backend/src/milestones/repo.rs)
+- PATCHで取得時の `updated_at` を `expected_updated_at` として送ると、版が異なる場合は `409 Conflict` を返す。Webの編集フォームと盤面等はこの照合を使う。省略した既存クライアントのPATCHは、ロック取得後の値に適用する。[API定義](../backend/src/api_docs.rs)・[Webの編集フォーム](../frontend/src/pages/TicketEditPage.tsx)
+
 ## 設計レビューで判明したリスクと対処案
 
 | コードで確認したこと | 生じ得る問題 | 推奨する対処（未実装） |
 |---|---|---|
 | 案件と初期所属は同じトランザクションで確定する。作成の監査記録はコミット後に書く。最後のmanagerの確認と所属更新は別操作。[作成](../backend/src/projects/repo.rs)・[監査記録](../backend/src/projects/handlers.rs)・[所属変更](../backend/src/project_members/handlers.rs) | 監査記録が失敗すると、案件は保存されるがAPIはエラーを返す。所属変更が競合すると責任者を失い、所属が0人なら公開範囲も変わる。 | 監査記録の確定境界を検討し、同じ案件の責任者変更を直列化する。旧データの扱いはQ1。 |
-| 親・マイルストーンの外部キーは存在を保証するが同一案件まで保証しない。依存関係操作の認可は起点票中心。[DDL](../backend/migrations/20250703000001_init.sql)・[親子操作](../backend/src/tickets/repo.rs)・[依存操作](../backend/src/tickets/dependencies.rs) | ツリー表示・削除が案件の境界を越え得る。関連先の情報や操作が意図した共有範囲から外れる。 | 関係の両端と操作対象の所属を検証。越境依存は親子と分けて扱い、検索・日報・通知等も同じ可視性で点検。 |
-| チケットの更新は旧値を読んで全項目を書き戻し、活動履歴はその後に記録。[更新SQL](../backend/src/tickets/repo.rs)・[履歴記録](../backend/src/tickets/handlers.rs) | 同時編集の消失、履歴と現在値の不一致。履歴を使う集計にも波及。 | 更新・履歴を同じトランザクションにし、古い版からの操作を検出する。 |
+| 同一案件の検証はAPIにあり、親・マイルストーンの外部キーは参照先の存在を保証する。[DDL](../backend/migrations/20250703000001_init.sql)・[関連先の検証](../backend/src/tickets/repo.rs) | 旧データや直接のSQL操作では案件をまたぐ参照IDが残り得る。 | 旧データの引継ぎ方針に沿って補正やDB制約を検討する。案件間の依存は[Issue #11](https://github.com/jo7ueb/neport/issues/11)で設計する。 |
 | 案件ごとの全件取得に加え、通常の票の読み込みは子孫数を再帰集計。[個人画面](../frontend/src/pages/DashboardPage.tsx)・[取得SQL](../backend/src/tickets/repo.rs) | 案件数・ツリー深度が増えると横断画面の負荷が増す。 | 可視性付きの軽い一覧をサーバーでページング。索引追加は代表データで実行計画を確認して判断。 |
 
 既存データの件数・整合性、並行操作、深いWBSでの負荷は対象の改修時に検証する。採用する設計と作業順は[要求台帳](REQUIREMENTS.md)と[追跡Issue #2](https://github.com/jo7ueb/neport/issues/2)を参照。

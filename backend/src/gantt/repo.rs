@@ -7,11 +7,11 @@ use super::models::GanttData;
 
 async fn list_dependencies_for_project(db: &PgPool, project_id: i64) -> Result<Vec<TicketDependency>> {
     sqlx::query_as::<_, (i64, i64, i64, chrono::DateTime<chrono::Utc>)>(
-        "SELECT DISTINCT td.id, td.predecessor_ticket_id, td.successor_ticket_id, td.created_at
+        "SELECT td.id, td.predecessor_ticket_id, td.successor_ticket_id, td.created_at
          FROM ticket_dependencies td
          WHERE td.deleted_at IS NULL
-            AND (td.predecessor_ticket_id IN (SELECT id FROM tickets WHERE project_id = $1)
-            OR td.successor_ticket_id IN (SELECT id FROM tickets WHERE project_id = $1))"
+            AND td.predecessor_ticket_id IN (SELECT id FROM tickets WHERE project_id = $1 AND deleted_at IS NULL)
+            AND td.successor_ticket_id IN (SELECT id FROM tickets WHERE project_id = $1 AND deleted_at IS NULL)"
     )
     .bind(project_id)
     .fetch_all(db)

@@ -80,7 +80,10 @@ export function TicketViewPage() {
   }
 
   const attachChildMutation = useMutation({
-    mutationFn: () => updateTicket(existingChildTicket!.id, { parent_ticket_id: tid }),
+    mutationFn: () => updateTicket(existingChildTicket!.id, {
+      parent_ticket_id: tid,
+      expected_updated_at: existingChildTicket!.updated_at,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ticket', tid, 'children'] })
       setExistingChildTicket(null)
@@ -230,6 +233,7 @@ export function TicketViewPage() {
             </div>
             <div className="mb-3 flex items-center gap-2">
               <TicketPicker
+                projectId={ticket.project_id}
                 value={existingChildTicket}
                 onChange={setExistingChildTicket}
                 placeholder={t('ticket.detail.existingChildPlaceholder')}
@@ -253,7 +257,7 @@ export function TicketViewPage() {
           </div>
 
           <div className="rounded border bg-white p-4">
-            <DependencyList ticketId={tid} />
+            <DependencyList ticketId={tid} projectId={ticket.project_id} />
           </div>
         </div>
       </div>

@@ -34,7 +34,7 @@ pub async fn list_members(db: &PgPool, project_id: i64) -> Result<Vec<ProjectMem
         .map(|rows| rows.into_iter().map(row_to_member).collect())
 }
 
-pub async fn has_any_members(db: &PgPool, project_id: i64) -> Result<bool> {
+pub async fn has_any_members<'e>(db: impl sqlx::PgExecutor<'e>, project_id: i64) -> Result<bool> {
     let (exists,): (bool,) =
         sqlx::query_as("SELECT EXISTS (SELECT 1 FROM project_members WHERE project_id = $1)")
             .bind(project_id)
@@ -44,7 +44,7 @@ pub async fn has_any_members(db: &PgPool, project_id: i64) -> Result<bool> {
     Ok(exists)
 }
 
-pub async fn get_role(db: &PgPool, project_id: i64, user_id: i64) -> Result<Option<ProjectRole>> {
+pub async fn get_role<'e>(db: impl sqlx::PgExecutor<'e>, project_id: i64, user_id: i64) -> Result<Option<ProjectRole>> {
     let row: Option<(String,)> =
         sqlx::query_as("SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2")
             .bind(project_id)
@@ -55,7 +55,7 @@ pub async fn get_role(db: &PgPool, project_id: i64, user_id: i64) -> Result<Opti
     Ok(row.map(|(r,)| r.parse().unwrap_or(ProjectRole::Viewer)))
 }
 
-pub async fn list_manager_user_ids(db: &PgPool, project_id: i64) -> Result<Vec<i64>> {
+pub async fn list_manager_user_ids<'e>(db: impl sqlx::PgExecutor<'e>, project_id: i64) -> Result<Vec<i64>> {
     let rows: Vec<(i64,)> =
         sqlx::query_as("SELECT user_id FROM project_members WHERE project_id = $1 AND role = 'manager'")
             .bind(project_id)

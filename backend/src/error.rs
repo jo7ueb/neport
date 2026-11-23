@@ -30,6 +30,9 @@ pub enum AppError {
     #[error("Bad request: {0}")]
     BadRequest(String),
 
+    #[error("Ticket has changed since it was loaded")]
+    TicketConflict,
+
     #[error("System is under maintenance")]
     MaintenanceMode,
 
@@ -62,6 +65,7 @@ impl IntoResponse for AppError {
             AppError::InvalidCsrf => (StatusCode::FORBIDDEN, self.to_string(), None),
             AppError::NotFound => (StatusCode::NOT_FOUND, self.to_string(), None),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg, None),
+            AppError::TicketConflict => (StatusCode::CONFLICT, self.to_string(), None),
             AppError::MaintenanceMode => (StatusCode::SERVICE_UNAVAILABLE, self.to_string(), None),
             AppError::InternalServerError => {
                 let error_id = Uuid::new_v4();
