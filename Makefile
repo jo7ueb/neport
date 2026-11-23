@@ -68,10 +68,10 @@ site:
 	npx --yes @redocly/cli@2.36.0 build-docs site/static/en/developer/api/openapi.json --output=site/static/en/developer/api/index.html --title='Neport API (English)'
 	hugo --source site --destination "$(CURDIR)/site/public" --minify --baseURL='https://jo7ueb.github.io/neport/'
 
-## Compile and run unit tests for the stdio MCP server.
+## Run MCP unit tests in the project's test container.
 mcp-check:
-	python3 -m compileall -q mcp/neport_mcp
-	python3 -m pytest -q mcp/tests
+	docker build -f mcp/Dockerfile.test -t neport-mcp-test mcp
+	docker run --rm --network none neport-mcp-test
 
 ## Serve the Hugo site locally (run `make site` first for API pages).
 site-serve:
