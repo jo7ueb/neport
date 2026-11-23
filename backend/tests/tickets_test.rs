@@ -557,6 +557,219 @@ async fn tree_endpoint_preserves_multi_level_descendants() {
 }
 
 #[tokio::test]
+async fn parent_and_milestone_must_belong_to_the_ticket_project() {
+    let user = TestUser::create().await;
+    let own_project = user.create_project(&unique("ticket-relation-own")).await;
+    let own_project_id = as_i64(&own_project, "id");
+    let other_project = user.create_project(&unique("ticket-relation-other")).await;
+    let other_project_id = as_i64(&other_project, "id");
+
+    let own_ticket = user.create_ticket(own_project_id, None, "Own ticket").await;
+    let own_ticket_id = as_i64(&own_ticket, "id");
+    let other_title = "Other project's ticket";
+    let other_ticket = user.create_ticket(other_project_id, None, other_title).await;
+    let other_ticket_id = as_i64(&other_ticket, "id");
+
+    async fn create_milestone(user: &TestUser, project_id: i64, name: &str) -> i64 {
+        let resp = user
+            .client
+            .post(format!("{}/api/v1/projects/{}/milestones", base_url(), project_id))
+            .json(&json!({ "name": name }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 201);
+        let milestone: serde_json::Value = resp.json().await.unwrap();
+        as_i64(&milestone, "id")
+    }
+    let own_milestone_id = create_milestone(&user, own_project_id, "own milestone").await;
+    let other_milestone_id = create_milestone(&user, other_project_id, "other milestone").await;
+
+    // --- create: cross-project parent / milestone are rejected -----------
+    let resp = user
+        .client
+        .post(format!("{}/api/v1/tickets", base_url()))
+        .json(&json!({
+            "project_id": own_project_id,
+            "parent_ticket_id": other_ticket_id,
+            "title": "cross-project parent",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "a ticket must not be created under another project's parent");
+
+    let resp = user
+        .client
+        .post(format!("{}/api/v1/tickets", base_url()))
+        .json(&json!({
+            "project_id": own_project_id,
+            "milestone_id": other_milestone_id,
+            "title": "cross-project milestone",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "a ticket must not be placed on another project's milestone");
+
+    // Nothing was created by either rejected request.
+    let resp = user
+        .client
+        .get(format!("{}/api/v1/projects/{}/tickets", base_url(), own_project_id))
+        .send()
+        .await
+        .unwrap();
+    let list: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(list["total"], 1, "rejected cross-project creation must not leave a ticket behind");
+
+    // --- create: same-project relations still work ----------------------
+    let resp = user
+        .client
+        .post(format!("{}/api/v1/tickets", base_url()))
+        .json(&json!({
+            "project_id": own_project_id,
+            "parent_ticket_id": own_ticket_id,
+            "milestone_id": own_milestone_id,
+            "title": "same-project relations",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201, "a parent and milestone in the ticket's own project must be accepted");
+    let child: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(child["parent_ticket_id"], own_ticket_id);
+    assert_eq!(child["milestone_id"], own_milestone_id);
+
+    // --- update: cross-project parent / milestone are rejected ----------
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), own_ticket_id))
+        .json(&json!({ "parent_ticket_id": other_ticket_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "a ticket must not be reparented under another project's ticket");
+
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), own_ticket_id))
+        .json(&json!({ "milestone_id": other_milestone_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "a ticket must not move onto another project's milestone");
+
+    // The rejected updates left the ticket untouched.
+    let resp = user
+        .client
+        .get(format!("{}/api/v1/tickets/{}", base_url(), own_ticket_id))
+        .send()
+        .await
+        .unwrap();
+    let fetched: serde_json::Value = resp.json().await.unwrap();
+    assert!(fetched["parent_ticket_id"].is_null());
+    assert!(fetched["milestone_id"].is_null());
+
+    // --- update: same-project relations still work, and clear -------------
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), own_ticket_id))
+        .json(&json!({ "milestone_id": own_milestone_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let updated: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(updated["milestone_id"], own_milestone_id);
+
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), own_ticket_id))
+        .json(&json!({ "milestone_id": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(resp.json::<serde_json::Value>().await.unwrap()["milestone_id"].is_null());
+
+    // Setting a milestone and clearing it again must keep working, so the
+    // "only validate what changed" check does not make detaching impossible.
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), own_ticket_id))
+        .json(&json!({ "milestone_id": own_milestone_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), own_ticket_id))
+        .json(&json!({ "milestone_id": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(
+        resp.json::<serde_json::Value>().await.unwrap()["milestone_id"].is_null(),
+        "clearing an attached milestone must detach it"
+    );
+}
+
+#[tokio::test]
+async fn a_parent_or_milestone_that_does_not_exist_is_a_bad_request() {
+    let user = TestUser::create().await;
+    let missing_name = unique("ticket-relation-missing");
+    let project = user.create_project(&missing_name).await;
+    let project_id = as_i64(&project, "id");
+    let ticket = user.create_ticket(project_id, None, "Ticket").await;
+    let ticket_id = as_i64(&ticket, "id");
+
+    // A parent ticket that has been deleted counts as missing, not as a
+    // foreign-key error surfaced as 500.
+    let deleted = user.create_ticket(project_id, None, "Will be deleted").await;
+    let deleted_id = as_i64(&deleted, "id");
+    let resp = user
+        .client
+        .delete(format!("{}/api/v1/tickets/{}", base_url(), deleted_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), ticket_id))
+        .json(&json!({ "parent_ticket_id": deleted_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "a deleted parent must be rejected as a bad request");
+
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), ticket_id))
+        .json(&json!({ "milestone_id": 999_999_999_i64 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "a nonexistent milestone must be rejected as a bad request");
+
+    let resp = user
+        .client
+        .post(format!("{}/api/v1/tickets", base_url()))
+        .json(&json!({
+            "project_id": project_id,
+            "parent_ticket_id": deleted_id,
+            "title": "under a deleted parent",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "creation under a deleted parent must be rejected as a bad request");
+}
+
+#[tokio::test]
 async fn overdue_filter_only_returns_open_tickets_past_due_date() {
     let user = TestUser::create().await;
     let project = user.create_project(&unique("ticket-overdue-project")).await;

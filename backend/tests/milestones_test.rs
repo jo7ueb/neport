@@ -146,6 +146,112 @@ async fn create_list_update_delete_milestone_and_link_it_to_a_ticket() {
 }
 
 #[tokio::test]
+async fn a_soft_deleted_milestone_stays_attached_and_unrelated_edits_still_succeed() {
+    let user = TestUser::create().await;
+    let project = user.create_project(&unique("milestone-soft-delete-edit")).await;
+    let project_id = as_i64(&project, "id");
+
+    let resp = user
+        .client
+        .post(format!("{}/api/v1/projects/{}/milestones", base_url(), project_id))
+        .json(&json!({ "name": "retired release" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let milestone: serde_json::Value = resp.json().await.unwrap();
+    let milestone_id = as_i64(&milestone, "id");
+
+    let ticket = user.create_ticket(project_id, None, "Ticket on a milestone").await;
+    let ticket_id = as_i64(&ticket, "id");
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), ticket_id))
+        .json(&json!({ "milestone_id": milestone_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let parent = user.create_ticket(project_id, None, "New parent").await;
+    let parent_id = as_i64(&parent, "id");
+
+    // Retire the milestone. Its tickets keep pointing at it (see the test
+    // above), so the id is still what a client will send back on the next edit.
+    let resp = user
+        .client
+        .delete(format!(
+            "{}/api/v1/projects/{}/milestones/{}",
+            base_url(),
+            project_id,
+            milestone_id
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    // An edit that has nothing to do with the milestone - here, reparenting -
+    // must still succeed even though it carries the now-deleted milestone id.
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), ticket_id))
+        .json(&json!({
+            "parent_ticket_id": parent_id,
+            "milestone_id": milestone_id,
+            "title": "Renamed after the milestone was retired",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        200,
+        "editing a ticket must not fail because its existing milestone was soft-deleted"
+    );
+    let updated: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(updated["milestone_id"], milestone_id, "the historical link must be preserved");
+    assert_eq!(updated["parent_ticket_id"], parent_id, "the unrelated change must still apply");
+
+    // A PATCH that omits milestone_id entirely also keeps it.
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), ticket_id))
+        .json(&json!({ "title": "Renamed again" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.json::<serde_json::Value>().await.unwrap()["milestone_id"], milestone_id);
+
+    // But attaching a *new* ticket to that deleted milestone is refused.
+    let resp = user
+        .client
+        .post(format!("{}/api/v1/tickets", base_url()))
+        .json(&json!({
+            "project_id": project_id,
+            "milestone_id": milestone_id,
+            "title": "Should not attach to a retired milestone",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "a soft-deleted milestone must not accept new links");
+
+    // Nor can a different ticket be moved onto it.
+    let other = user.create_ticket(project_id, None, "Another ticket").await;
+    let other_id = as_i64(&other, "id");
+    let resp = user
+        .client
+        .patch(format!("{}/api/v1/tickets/{}", base_url(), other_id))
+        .json(&json!({ "milestone_id": milestone_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "moving a ticket onto a soft-deleted milestone must be refused");
+}
+
+#[tokio::test]
 async fn milestone_start_date_round_trips_through_create_and_update() {
     let user = TestUser::create().await;
     let project = user.create_project(&unique("milestone-start-date-project")).await;
