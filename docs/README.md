@@ -13,6 +13,8 @@
 ## 設計判断と仕様案
 
 - [ADR 0001　チケット進捗の一元管理](adr/0001-ticket-progress.md) — 合意済みの方針と、その適用範囲。
+- [ADR 0002　仕事管理と外部実行システムの責任分界](adr/0002-work-management-boundaries.md) — 合意済みの運用原則。GitHub Issues/PRやAI工場との役割分担。
+- [仕事管理の現状・ギャップ分析（2026-11-23）](WORK_MANAGEMENT_GAP_2026-11-23.md) — 現行コードと要求の対応、残る課題、運用シナリオ。
 - [横断カンバンと個人の注目リスト](specs/boards-and-focus.md) — 仕様案。表示・更新・権限の受け入れ例。
 - [作業タイマーと工数訂正](specs/work-timer.md) — 仕様案。切替・重複防止・締め解除の受け入れ例。
 
