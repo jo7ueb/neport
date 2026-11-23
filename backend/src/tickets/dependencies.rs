@@ -125,6 +125,22 @@ pub mod handlers {
             ));
         }
 
+        // Only the path ticket above is authorized so far. The other end has
+        // to be checked too: without this, anyone who can edit one ticket
+        // could link it to a ticket id they can neither see nor edit, and
+        // would also learn (via cycle/answer differences) about tickets in
+        // projects outside their access. Cross-project links are rejected
+        // explicitly here; whether they should ever be allowed is Q2 in
+        // docs/REQUIREMENTS.md and is not decided by this check.
+        let other_project_id = access::project_id_for_ticket(&state.db, payload.other_ticket_id).await?;
+        access::check_project_access(&state.db, &user, other_project_id, Access::Write)
+            .await?;
+        if other_project_id != project_id {
+            return Err(AppError::BadRequest(
+                "dependencies between tickets in different projects are not supported".into(),
+            ));
+        }
+
         if super::would_create_dependency_cycle(&state.db, predecessor_id, successor_id).await? {
             return Err(AppError::BadRequest(
                 "this dependency would create a cycle".into(),
@@ -144,6 +160,26 @@ pub mod handlers {
     ) -> Result<StatusCode> {
         let project_id = access::project_id_for_ticket(&state.db, ticket_id).await?;
         access::check_project_access(&state.db, &user, project_id, Access::Write).await?;
+        // Authorizing the path ticket alone would let a caller remove any
+        // dependency row by passing an unrelated dependency's id. Only a link
+        // that actually belongs to this ticket may be deleted from here, and
+        // one that is already gone is a no-op (matching the old unconditional
+        // UPDATE), not an error.
+        match super::get_dependency_tickets(&state.db, dependency_id).await? {
+            Some((predecessor_id, successor_id))
+                if predecessor_id == ticket_id || successor_id == ticket_id =>
+            {
+                if super::is_dependency_deleted(&state.db, dependency_id).await? {
+                    return Ok(StatusCode::NO_CONTENT);
+                }
+            }
+            Some(_) => {
+                return Err(AppError::BadRequest(
+                    "this dependency does not belong to the ticket in the path".into(),
+                ))
+            }
+            None => return Err(AppError::NotFound),
+        }
         let access_log_id = crate::audit::access_log::record(&state.db, user.id, ip.as_deref()).await?;
         super::delete_dependency(&state.db, dependency_id, Some(user.id), access_log_id).await?;
         Ok(StatusCode::NO_CONTENT)
@@ -216,6 +252,29 @@ pub async fn create_dependency(
             created_by_id,
         }
     })
+}
+
+// The two ticket ids a dependency row links. Returns None for an unknown id so
+// the caller can answer 404 rather than silently succeeding on a typo.
+pub async fn get_dependency_tickets(db: &PgPool, dependency_id: i64) -> Result<Option<(i64, i64)>> {
+    sqlx::query_as::<_, (i64, i64)>(
+        "SELECT predecessor_ticket_id, successor_ticket_id FROM ticket_dependencies WHERE id = $1",
+    )
+    .bind(dependency_id)
+    .fetch_optional(db)
+    .await
+    .map_err(AppError::Database)
+}
+
+pub async fn is_dependency_deleted(db: &PgPool, dependency_id: i64) -> Result<bool> {
+    let (deleted,): (bool,) = sqlx::query_as(
+        "SELECT deleted_at IS NOT NULL FROM ticket_dependencies WHERE id = $1",
+    )
+    .bind(dependency_id)
+    .fetch_one(db)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(deleted)
 }
 
 // Soft delete: the row (and its created_at/created_by_id) is kept around so

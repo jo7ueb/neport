@@ -99,6 +99,87 @@ pub(crate) fn row_to_ticket(row: TicketRow) -> Ticket {
     }
 }
 
+// The schema's foreign keys only prove that the parent/milestone rows exist,
+// not that they belong to the same project as the ticket being written. Both
+// create and update route their parent/milestone ids through here so a ticket
+// can never be *attached* to another project's parent or milestone, which
+// would otherwise let tree, delete and milestone queries cross a project
+// boundary.
+//
+// `current_*` are the ids the ticket already has (None on create). A relation
+// the ticket already holds is left alone: milestones are soft-deleted on
+// purpose so tickets keep their historical link (see
+// milestones::repo::delete_milestone), and re-validating a carried-over id
+// would make every later edit of such a ticket fail. Only a value that is
+// actually being set to something new is resolved, and it must exist, belong
+// to the same project, and not be soft-deleted.
+pub async fn validate_ticket_relations(
+    db: &PgPool,
+    project_id: i64,
+    parent_ticket_id: Option<i64>,
+    current_parent_ticket_id: Option<i64>,
+    milestone_id: Option<i64>,
+    current_milestone_id: Option<i64>,
+) -> Result<()> {
+    if parent_ticket_id != current_parent_ticket_id {
+        if let Some(parent_id) = parent_ticket_id {
+            let row: Option<(i64, bool)> = sqlx::query_as::<_, (i64, bool)>(
+                "SELECT project_id, deleted_at IS NOT NULL FROM tickets WHERE id = $1",
+            )
+            .bind(parent_id)
+            .fetch_optional(db)
+            .await
+            .map_err(AppError::Database)?;
+            match row {
+                Some((parent_project_id, _)) if parent_project_id != project_id => {
+                    return Err(AppError::BadRequest(
+                        "the parent ticket belongs to a different project".to_string(),
+                    ))
+                }
+                // A deleted or nonexistent id would otherwise become an FK
+                // violation reported as a 500; a bad request is the honest
+                // answer for "you asked to attach something that isn't there".
+                Some((_, true)) | None => {
+                    return Err(AppError::BadRequest(
+                        "the parent ticket does not exist".to_string(),
+                    ))
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if milestone_id != current_milestone_id {
+        if let Some(milestone_id) = milestone_id {
+            let row: Option<(i64, bool)> = sqlx::query_as::<_, (i64, bool)>(
+                "SELECT project_id, deleted_at IS NOT NULL FROM milestones WHERE id = $1",
+            )
+            .bind(milestone_id)
+            .fetch_optional(db)
+            .await
+            .map_err(AppError::Database)?;
+            match row {
+                Some((milestone_project_id, _)) if milestone_project_id != project_id => {
+                    return Err(AppError::BadRequest(
+                        "the milestone belongs to a different project".to_string(),
+                    ))
+                }
+                // Soft-deleted milestones are kept out of the active list, so
+                // attaching a ticket to one is rejected; an already-linked
+                // ticket is unaffected because the branch above is skipped.
+                Some((_, true)) | None => {
+                    return Err(AppError::BadRequest(
+                        "the milestone does not exist".to_string(),
+                    ))
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn create_ticket(
     db: &PgPool,
@@ -120,6 +201,12 @@ pub async fn create_ticket(
         .await
         .map_err(AppError::Database)?
         .ok_or(AppError::NotFound)?;
+    // Check before INSERT so a cross-project parent/milestone surfaces as a
+    // clear 400 instead of an opaque foreign-key failure. A new ticket has no
+    // relations yet, so both "current" values are None and everything sent is
+    // validated.
+    validate_ticket_relations(db, project_id, parent_ticket_id, None, milestone_id, None).await?;
+
     let status_id = workflows_repo::get_initial_status_id(db, workflow_id).await?;
 
     // INSERT ... RETURNING only exposes the tickets table, but row_to_ticket
@@ -339,6 +426,19 @@ pub async fn update_ticket(db: &PgPool, id: i64, update: TicketUpdate) -> Result
     let due_date = update.due_date.unwrap_or(current.due_date);
     let parent_ticket_id = update.parent_ticket_id.unwrap_or(current.parent_ticket_id);
     let milestone_id = update.milestone_id.unwrap_or(current.milestone_id);
+
+    // The ticket itself keeps its project on update. Relations it already had
+    // are left alone (a soft-deleted milestone must not break unrelated
+    // edits); only newly set values are resolved within that same project.
+    validate_ticket_relations(
+        db,
+        current.project_id,
+        parent_ticket_id,
+        current.parent_ticket_id,
+        milestone_id,
+        current.milestone_id,
+    )
+    .await?;
 
     let status_id = match update.status_id {
         Some(new_status_id) if new_status_id != current.status.id => {
